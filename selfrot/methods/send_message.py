@@ -6,7 +6,7 @@ class SendMessage(TelegramAPIMethod):
     chat_id: int 
     user_id: int
 
-    def __init__(self, text: int, chat_id: int):
+    def __init__(self, text: str, chat_id: int):
         super().__init__()
         self.text = text
         self.chat_id = chat_id

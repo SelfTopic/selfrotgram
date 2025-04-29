@@ -1,7 +1,7 @@
-
+from typing import Any
 
 class TelegramAPIMethod:
     __api_method__: str 
-    data: dict
+    data: dict[str, Any]
 
     pass

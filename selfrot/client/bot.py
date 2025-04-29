@@ -1,7 +1,7 @@
 from ..methods import TelegramAPIMethod, SendMessage, GetUpdates
 from .session import AsyncSession
+from ..config import ConfigAPI
 from typing import Optional
-import asyncio 
 
 class Bot:
 
@@ -10,31 +10,43 @@ class Bot:
     
     def __init__(
         self, 
-        token: Optional[str] = None
+        token: Optional[str] = None,
     ):
-        self.token = token 
+        
+        self.token = token if token else "Unauthorized"
         self.session = AsyncSession()
+        self.cfg = ConfigAPI()
 
-    async def get_updates(self) -> None:
-        method = GetUpdates(token=self.token)
+        if self.token == "Unauthorized":
 
-        await self._make_request(method=method)
+            token = self.cfg.get_token()
+            if not token:
+                raise Exception("Fill bot token in configure file")
+            
+            self.token = token
 
-    async def send_message(self, text: str, chat_id: int) -> None:
+    async def get_updates(self, offset: int = 0):
+        method = GetUpdates(
+            offset=offset
+        )
+
+        response = await self._get_request(method=method)
+        return response
+
+    async def send_message(self, text: str, chat_id: int):
         method = SendMessage(
             text=text,
             chat_id=chat_id    
         )
 
-        await self._make_request(method=method)
+        response = await self._make_request(method=method)
+        return response
 
-    async def _make_request(self, method: type[TelegramAPIMethod]):
+    async def _make_request(self, method: TelegramAPIMethod):
         return await self.session(method=method, token=self.token)
+    
+    async def _get_request(self, method: TelegramAPIMethod):
+        return await self.session.get(method=method, token=self.token)
 
-if __name__ == '__main__':
-    bot = Bot("8105695330:AAFz3vOdQQXnnL5y2uXIMWuoM8h-JXekOaM")
-
-    async def main():
-        await bot.send_message("Hello", 7970396690)
-
-    asyncio.run(main())
+    
+  

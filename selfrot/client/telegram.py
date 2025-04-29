@@ -1,12 +1,12 @@
 from dataclasses import dataclass 
 from ..methods import TelegramAPIMethod
-
+from typing import Any
 
 @dataclass 
 class TelegramAPIServer:
 
     url: str 
-    data: dict
+    data: dict[str, Any]
 
     def __init__(self, url: str):
         self.url = url
@@ -14,13 +14,13 @@ class TelegramAPIServer:
     def get_url(
         self,
         token: str,
-        method: type[TelegramAPIMethod]
+        method: TelegramAPIMethod
     ):
         return self.url.format(token=token, method=method.__api_method__)
     
     def build_data(
         self,
-        method: type[TelegramAPIMethod]
+        method: TelegramAPIMethod
     ):
         pass
 
