@@ -1,7 +1,9 @@
 from ..methods import TelegramAPIMethod, SendMessage, GetUpdates
 from .session import AsyncSession
 from ..config import ConfigAPI
-from typing import Optional
+from typing import Optional 
+from ..types import Update 
+
 
 class Bot:
 
@@ -31,7 +33,9 @@ class Bot:
         )
 
         response = await self._get_request(method=method)
-        return response
+
+        updates = [Update(**u) for u in response.get("result", [])]
+        return updates
 
     async def send_message(self, text: str, chat_id: int):
         method = SendMessage(

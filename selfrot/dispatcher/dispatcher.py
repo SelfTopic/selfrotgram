@@ -23,20 +23,20 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
     
     def register_handler(
         self,
-        handler: BaseHandler[TContext]
+        handler: Type[BaseHandler[TContext]]
     ) -> None:
-        self.handlers.append(handler)
+        self.handlers.append(handler(self.ctx))
 
     
 
     async def call_handler(self) -> None:
 
-        for handler in self.handlers:
-            result = await handler.filter(self.ctx)
+        async for handler in self._get_type_handlers():
+            result = await handler.filter()
 
             if result == True:
-                await handler.pre_handle(self.ctx)
-                await handler.handle(self.ctx)
+                await handler.pre_handle()
+                await handler.handle()
 
             else:
                 return None
@@ -48,9 +48,8 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
 
             try:
 
-                response = await self.api.get_updates(offset=offset)
+                updates = await self.api.get_updates(offset=offset)
                 
-                updates = [Update(**u) for u in response.get("result", [])]
                 if updates:
                     offset = updates[-1].update_id + 1 
 
@@ -60,6 +59,12 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
             except Exception as e:
                 print("Error get updates: ", e)
 
+    async def _get_type_handlers(self) -> AsyncGenerator[BaseHandler[TContext], None]:
+        for handler in self.handlers:
+            if handler.check_type_ctx():
+                yield handler
+        
+
     async def polling(self) -> None:
 
         while True:
@@ -68,5 +73,5 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
 
                 await asyncio.create_task(self.call_handler())
 
-    def start(self):
+    def start_polling(self):
         asyncio.run(self.polling())

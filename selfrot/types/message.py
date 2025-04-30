@@ -12,4 +12,4 @@ class Message(BaseModel):
     text: Optional[str]
     message_id: int
     date: int 
-    entities: list[dict[str, Any]]
+    entities: Optional[list[dict[str, Any]]] = None
