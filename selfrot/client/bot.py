@@ -1,4 +1,4 @@
-from ..methods import TelegramAPIMethod, SendMessage, GetUpdates
+from ..methods import TelegramAPIMethod, DeleteWebhook, SendMessage, GetUpdates
 from .session import AsyncSession
 from ..config import ConfigAPI
 from typing import Optional 
@@ -30,6 +30,13 @@ class Bot:
 
         self.id = int(self.token.split(":")[0])
 
+    async def delete_webhook(self, offset: int = 0):
+        method = DeleteWebhook()
+
+        response = await self._delete_request(method=method)
+
+        return response
+
     async def get_updates(self, offset: int = 0):
         method = GetUpdates(
             offset=offset
@@ -54,6 +61,9 @@ class Bot:
     
     async def _get_request(self, method: TelegramAPIMethod):
         return await self.session.get(method=method, token=self.token)
+    
+    async def _delete_request(self, method: TelegramAPIMethod):
+        return await self.session.delete(method=method, token=self.token)
 
     
   

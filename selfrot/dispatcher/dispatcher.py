@@ -109,5 +109,10 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
 
                 await asyncio.create_task(self.call_middleware())
 
-    def start_polling(self):
-        asyncio.run(self.polling())
+    async def _start(self, skip_updates):
+        if skip_updates:
+            await self.api.delete_webhook()
+        await self.polling()
+
+    def start_polling(self, skip_updates=True):
+        asyncio.run(self._start(skip_updates))

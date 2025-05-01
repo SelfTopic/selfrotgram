@@ -24,7 +24,7 @@ class AsyncSession:
             method=method
         )
         if self.session:
-            response = await self.session.post(url=url, data=method.data)
+            response = await self.session.post(url=url, data=method.data, ssl=False)
 
             return await response.json()
         
@@ -39,10 +39,23 @@ class AsyncSession:
         )
 
         if self.session:
-            response = await self.session.get(url=url, data=method.data)
+            response = await self.session.get(url=url, data=method.data, ssl=False)
 
             return await response.json()
         
         raise
 
+    async def delete(self, method: TelegramAPIMethod, token: str):
 
+        await self.create_session()
+        url = TELEGRAM_API.get_url(
+            token=token,
+            method=method
+        )
+
+        if self.session:
+            response = await self.session.delete(url=url, ssl=False)
+
+            return response
+        
+        raise
