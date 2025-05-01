@@ -19,8 +19,6 @@ class BaseHandler(ABC, Generic[TContext]):
     
     def check_type_ctx(self): 
         if self.ctx.message and self.type.value == "message":
-            message = self.ctx.update_message_type_for_message_handler()
-            self.ctx.message = message
             return True 
         
         else:

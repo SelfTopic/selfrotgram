@@ -15,19 +15,15 @@ class BaseContext:
     update: Update 
     bot: Bot
 
-    def __init_subclass__(cls) -> None:
-        cls.message: Optional[Message] = cls.update.message
-            
-    async def reply(self, text: str):
-        if not self.message:
-            raise
-        return await self.bot.send_message(text=text, chat_id=self.message.chat.id)
+    @property
+    def message(self) -> Optional[Message]:
+        return self.update.message
     
-    def update_message_type_for_message_handler(self):
+    async def reply(self, text: str):
         if not self.message:
             raise 
 
-        return self.message
-
-
+        response = await self.bot.send_message(text=text, chat_id=self.message.chat.id)
+        return response
+    
 

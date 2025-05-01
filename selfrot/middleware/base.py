@@ -1,12 +1,16 @@
-from ..context import BaseContext 
+from abc import abstractmethod, ABC 
+from typing import Generic, Any
+from ..context import TContext
 
-from abc import abstractmethod
-
-class BaseMiddleware:
-    context: type[BaseContext]
+class BaseMiddleware(ABC, Generic[TContext]):
+    ctx: TContext
+    
+    def __init__(self, ctx: TContext) -> None:
+        super().__init__()
+        self.ctx = ctx
     
     @abstractmethod
-    async def pre_handle(self, ctx: type[BaseContext]): ...
+    async def pre_handle(self) -> bool: ...
 
     @abstractmethod
-    async def post_handle(self, ctx: type[BaseContext]): ...
+    async def post_handle(self) -> Any: ...

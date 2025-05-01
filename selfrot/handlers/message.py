@@ -7,8 +7,6 @@ class MessageHandler(BaseHandler[TContext]):
     type: HandlerType = HandlerType.message
 
     def __init__(self, ctx: TContext) -> None:
-        message = ctx.update_message_type_for_message_handler()
-        ctx.message = message
         super().__init__(ctx)
 
 

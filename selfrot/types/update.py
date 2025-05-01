@@ -10,7 +10,7 @@ class Update(BaseModel):
     update_id: int 
     edited_message: Optional[Message] = None 
     channel_post: Optional[Message] = None 
-    edited_channel_post: Optional[Message]
+    edited_channel_post: Optional[Message] = None
     # business_connection
     business_message: Optional[Message] = None 
     edited_business_message: Optional[Message] = None

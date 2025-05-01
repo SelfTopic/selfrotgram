@@ -5,3 +5,6 @@ __pycache__
 /__pycache__
 __pycache__/
 examples/
+*.cfg
+.cfg
+bot_cfg.cfg

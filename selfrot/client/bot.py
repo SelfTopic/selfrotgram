@@ -18,6 +18,7 @@ class Bot:
         self.token = token if token else "Unauthorized"
         self.session = AsyncSession()
         self.cfg = ConfigAPI()
+        self.id: int = 0
 
         if self.token == "Unauthorized":
 
@@ -26,6 +27,8 @@ class Bot:
                 raise Exception("Fill bot token in configure file")
             
             self.token = token
+
+        self.id = int(self.token.split(":")[0])
 
     async def get_updates(self, offset: int = 0):
         method = GetUpdates(
