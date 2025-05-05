@@ -1,0 +1,6 @@
+from typing import Union
+from .background_fill_solid import BackgroundFillSolid
+from .background_fill_gradient import BackgroundFillGradient
+from .background_fill_freeform_gradient import BackgroundFillFreeformGradient
+
+BackgroundFill = Union[BackgroundFillSolid, BackgroundFillGradient, BackgroundFillFreeformGradient]

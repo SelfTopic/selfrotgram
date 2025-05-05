@@ -1,0 +1,49 @@
+from typing import Union, List, Optional
+from pydantic import BaseModel
+from .chat import Chat
+from .animation import Animation
+from .video_note import VideoNote
+from .game import Game
+from .giveaway_winners import GiveawayWinners
+from .photo_size import PhotoSize
+from .paid_media_info import PaidMediaInfo
+from .venue import Venue
+from .dice import Dice
+from .link_preview_options import LinkPreviewOptions
+from .audio import Audio
+from .document import Document
+from .contact import Contact
+from .poll import Poll
+from .video import Video
+from .story import Story
+from .invoice import Invoice
+from .giveaway import Giveaway
+from .location import Location
+from .voice import Voice
+from ..stickers.sticker import Sticker
+
+class ExternalReplyInfo(BaseModel):
+    origin: MessageOrigin
+    chat: Optional[Chat] = None
+    message_id: Optional[int] = None
+    link_preview_options: Optional[LinkPreviewOptions] = None
+    animation: Optional[Animation] = None
+    audio: Optional[Audio] = None
+    document: Optional[Document] = None
+    paid_media: Optional[PaidMediaInfo] = None
+    photo: Optional[List[PhotoSize]] = None
+    sticker: Optional[Sticker] = None
+    story: Optional[Union[Story]] = None
+    video: Optional[Video] = None
+    video_note: Optional[VideoNote] = None
+    voice: Optional[Voice] = None
+    has_media_spoiler: Optional[bool] = None
+    contact: Optional[Contact] = None
+    dice: Optional[Dice] = None
+    game: Optional[Game] = None
+    giveaway: Optional[Giveaway] = None
+    giveaway_winners: Optional[GiveawayWinners] = None
+    invoice: Optional[Invoice] = None
+    location: Optional[Location] = None
+    poll: Optional[Poll] = None
+    venue: Optional[Venue] = None

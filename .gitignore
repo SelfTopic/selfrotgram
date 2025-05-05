@@ -8,3 +8,4 @@ examples/
 *.cfg
 .cfg
 bot_cfg.cfg
+requirements.txt

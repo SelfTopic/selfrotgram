@@ -1,19 +1,11 @@
-from .base import TelegramAPIMethod 
+from typing import ClassVar 
+from .base import TelegramAPIMethod
+from dataclasses import dataclass
 
 
+@dataclass
 class SendMessage(TelegramAPIMethod):
-    __api_method__ = "sendMessage"
-    chat_id: int 
+    __api_method__: ClassVar[str] = "sendMessage"
+    chat_id: int
     user_id: int
-
-    def __init__(self, text: str, chat_id: int):
-        super().__init__()
-        self.text = text
-        self.chat_id = chat_id
-        self.data = {
-            "text": text,
-            "chat_id": chat_id    
-        }
-         
-
-    
+    text: str

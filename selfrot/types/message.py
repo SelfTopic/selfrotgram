@@ -1,15 +1,148 @@
-from typing import Optional, Self, Any
-from .user import User
-from .chat import Chat
+from typing import Union, List, Optional
 from pydantic import BaseModel, Field
-
+from .chat import Chat
+from .animation import Animation
+from .chat_boost_added import ChatBoostAdded
+from .forum_topic_reopened import ForumTopicReopened
+from .video_note import VideoNote
+from .giveaway_created import GiveawayCreated
+from .giveaway_completed import GiveawayCompleted
+from .video_chat_ended import VideoChatEnded
+from .refunded_payment import RefundedPayment
+from .inline_keyboard_markup import InlineKeyboardMarkup
+from .general_forum_topic_unhidden import GeneralForumTopicUnhidden
+from .game import Game
+from .giveaway_winners import GiveawayWinners
+from .message_auto_delete_timer_changed import MessageAutoDeleteTimerChanged
+from .photo_size import PhotoSize
+from .successful_payment import SuccessfulPayment
+from .paid_media_info import PaidMediaInfo
+from .venue import Venue
+from .proximity_alert_triggered import ProximityAlertTriggered
+from .gift_info import GiftInfo
+from .dice import Dice
+from .paid_message_price_changed import PaidMessagePriceChanged
+from .chat_shared import ChatShared
+from .link_preview_options import LinkPreviewOptions
+from .audio import Audio
+from .document import Document
+from .contact import Contact
+from .poll import Poll
+from .message_origin import MessageOrigin
+from .message_entity import MessageEntity
+from .video_chat_scheduled import VideoChatScheduled
+from .video_chat_started import VideoChatStarted
+from .forum_topic_closed import ForumTopicClosed
+from .video import Video
+from .passport_data import PassportData
+from .story import Story
+from .chat_background import ChatBackground
+from .invoice import Invoice
+from .message import Message
+from .text_quote import TextQuote
+from .user import User
+from .users_shared import UsersShared
+from .maybe_inaccessible_message import MaybeInaccessibleMessage
+from .location import Location
+from .giveaway import Giveaway
+from .video_chat_participants_invited import VideoChatParticipantsInvited
+from .web_app_data import WebAppData
+from .voice import Voice
+from .forum_topic_created import ForumTopicCreated
+from .unique_gift_info import UniqueGiftInfo
+from .forum_topic_edited import ForumTopicEdited
+from .external_reply_info import ExternalReplyInfo
+from ..stickers.sticker import Sticker
+from .write_access_allowed import WriteAccessAllowed
+from .general_forum_topic_hidden import GeneralForumTopicHidden
 
 class Message(BaseModel):
-    
-    user: Optional[User] = Field(alias="from")
-    reply_message: Optional[Self] = None
-    chat: Chat 
-    text: Optional[str]
     message_id: int
-    date: int 
-    entities: Optional[list[dict[str, Any]]] = None
+    message_thread_id: Optional[int] = None
+    user: Optional[User] = Field(alias="from", default=None)
+    sender_chat: Optional[Chat] = None
+    sender_boost_count: Optional[int] = None
+    sender_business_bot: Optional[User] = None
+    date: int
+    business_connection_id: Optional[str] = None
+    chat: Chat
+    forward_origin: Optional[MessageOrigin] = None
+    is_topic_message: Optional[bool] = None
+    is_automatic_forward: Optional[bool] = None
+    reply_to_message: Optional[Message] = None
+    external_reply: Optional[ExternalReplyInfo] = None
+    quote: Optional[TextQuote] = None
+    reply_to_story: Optional[Union[Story]] = None
+    via_bot: Optional[User] = None
+    edit_date: Optional[int] = None
+    has_protected_content: Optional[bool] = None
+    is_from_offline: Optional[bool] = None
+    media_group_id: Optional[str] = None
+    author_signature: Optional[str] = None
+    paid_star_count: Optional[int] = None
+    text: Optional[str] = None
+    entities: Optional[List[MessageEntity]] = None
+    link_preview_options: Optional[LinkPreviewOptions] = None
+    effect_id: Optional[str] = None
+    animation: Optional[Animation] = None
+    audio: Optional[Audio] = None
+    document: Optional[Document] = None
+    paid_media: Optional[PaidMediaInfo] = None
+    photo: Optional[List[PhotoSize]] = None
+    sticker: Optional[Sticker] = None
+    story: Optional[Union[Story]] = None
+    video: Optional[Video] = None
+    video_note: Optional[VideoNote] = None
+    voice: Optional[Voice] = None
+    caption: Optional[str] = None
+    caption_entities: Optional[List[MessageEntity]] = None
+    show_caption_above_media: Optional[bool] = None
+    has_media_spoiler: Optional[bool] = None
+    contact: Optional[Contact] = None
+    dice: Optional[Dice] = None
+    game: Optional[Game] = None
+    poll: Optional[Poll] = None
+    venue: Optional[Venue] = None
+    location: Optional[Location] = None
+    new_chat_members: Optional[List[User]] = None
+    left_chat_member: Optional[User] = None
+    new_chat_title: Optional[str] = None
+    new_chat_photo: Optional[List[PhotoSize]] = None
+    delete_chat_photo: Optional[bool] = None
+    group_chat_created: Optional[bool] = None
+    supergroup_chat_created: Optional[bool] = None
+    channel_chat_created: Optional[bool] = None
+    message_auto_delete_timer_changed: Optional[MessageAutoDeleteTimerChanged] = None
+    migrate_to_chat_id: Optional[int] = None
+    migrate_from_chat_id: Optional[int] = None
+    pinned_message: Optional[MaybeInaccessibleMessage] = None
+    invoice: Optional[Invoice] = None
+    successful_payment: Optional[SuccessfulPayment] = None
+    refunded_payment: Optional[RefundedPayment] = None
+    users_shared: Optional[UsersShared] = None
+    chat_shared: Optional[ChatShared] = None
+    gift: Optional[GiftInfo] = None
+    unique_gift: Optional[UniqueGiftInfo] = None
+    connected_website: Optional[str] = None
+    write_access_allowed: Optional[WriteAccessAllowed] = None
+    passport_data: Optional[Union[PassportData]] = None
+    proximity_alert_triggered: Optional[ProximityAlertTriggered] = None
+    boost_added: Optional[ChatBoostAdded] = None
+    chat_background_set: Optional[ChatBackground] = None
+    forum_topic_created: Optional[Union[ForumTopicCreated]] = None
+    forum_topic_edited: Optional[Union[ForumTopicEdited]] = None
+    forum_topic_closed: Optional[Union[ForumTopicClosed]] = None
+    forum_topic_reopened: Optional[Union[ForumTopicReopened]] = None
+    general_forum_topic_hidden: Optional[Union[GeneralForumTopicHidden]] = None
+    general_forum_topic_unhidden: Optional[Union[GeneralForumTopicUnhidden]] = None
+    giveaway_created: Optional[GiveawayCreated] = None
+    giveaway: Optional[Giveaway] = None
+    giveaway_winners: Optional[GiveawayWinners] = None
+    giveaway_completed: Optional[GiveawayCompleted] = None
+    paid_message_price_changed: Optional[PaidMessagePriceChanged] = None
+    video_chat_scheduled: Optional[VideoChatScheduled] = None
+    video_chat_started: Optional[VideoChatStarted] = None
+    video_chat_ended: Optional[VideoChatEnded] = None
+    video_chat_participants_invited: Optional[VideoChatParticipantsInvited] = None
+    web_app_data: Optional[WebAppData] = None
+    reply_markup: Optional[InlineKeyboardMarkup] = None

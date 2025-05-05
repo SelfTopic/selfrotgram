@@ -1,0 +1,6 @@
+from typing import Union
+from .reaction_type_emoji import ReactionTypeEmoji
+from .reaction_type_custom_emoji import ReactionTypeCustomEmoji
+from .reaction_type_paid import ReactionTypePaid
+
+ReactionType = Union[ReactionTypeEmoji, ReactionTypeCustomEmoji, ReactionTypePaid]

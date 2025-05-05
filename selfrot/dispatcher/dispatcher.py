@@ -72,9 +72,8 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
             if result == True:
                 await handler.pre_handle()
                 await handler.handle()
-
             else:
-                return None
+                continue
             
     async def poll_updates(self) -> AsyncGenerator[Update, None]:
 
