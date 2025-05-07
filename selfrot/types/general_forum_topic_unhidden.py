@@ -1,0 +1,2 @@
+class GeneralForumTopicUnhidden():
+	pass

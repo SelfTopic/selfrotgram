@@ -47,7 +47,11 @@ from .background_type_pattern import BackgroundTypePattern
 from .background_type_chat_theme import BackgroundTypeChatTheme
 from .chat_background import ChatBackground
 from .forum_topic_created import ForumTopicCreated
+from .forum_topic_closed import ForumTopicClosed
 from .forum_topic_edited import ForumTopicEdited
+from .forum_topic_reopened import ForumTopicReopened
+from .general_forum_topic_hidden import GeneralForumTopicHidden
+from .general_forum_topic_unhidden import GeneralForumTopicUnhidden
 from .shared_user import SharedUser
 from .users_shared import UsersShared
 from .chat_shared import ChatShared

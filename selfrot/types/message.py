@@ -1,4 +1,4 @@
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Self
 from pydantic import BaseModel, Field
 from .chat import Chat
 from .animation import Animation
@@ -69,7 +69,7 @@ class Message(BaseModel):
     forward_origin: Optional[MessageOrigin] = None
     is_topic_message: Optional[bool] = None
     is_automatic_forward: Optional[bool] = None
-    reply_to_message: Optional[Message] = None
+    reply_to_message: Optional[Self] = None
     external_reply: Optional[ExternalReplyInfo] = None
     quote: Optional[TextQuote] = None
     reply_to_story: Optional[Union[Story]] = None

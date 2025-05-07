@@ -1,0 +1,2 @@
+class ForumTopicReopened():
+    pass

@@ -1,0 +1,2 @@
+class GeneralForumTopicHidden():
+	pass

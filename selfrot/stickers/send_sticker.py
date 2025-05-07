@@ -12,10 +12,10 @@ from ..types.reply_keyboard_remove import ReplyKeyboardRemove
 @dataclass
 class SendSticker(TelegramAPIMethod):
     __api_method__: ClassVar[str] = "sendSticker"
-    business_connection_id: Optional[str] = None
     chat_id: Union[int, str]
-    message_thread_id: Optional[int] = None
     sticker: Union[InputFile, str]
+    business_connection_id: Optional[str] = None
+    message_thread_id: Optional[int] = None
     emoji: Optional[str] = None
     disable_notification: Optional[bool] = None
     protect_content: Optional[bool] = None
