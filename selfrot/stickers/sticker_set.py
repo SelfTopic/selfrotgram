@@ -1,6 +1,6 @@
 from typing import List, Optional
 from pydantic import BaseModel
-from ..types.photo_size import PhotoSize
+from ..types import PhotoSize
 from .sticker import Sticker
 
 class StickerSet(BaseModel):

@@ -1,0 +1,6 @@
+from typing import Union, Self
+from .revenue_withdrawal_state_succeeded import RevenueWithdrawalStateSucceeded
+from .revenue_withdrawal_state_pending import RevenueWithdrawalStatePending
+from .revenue_withdrawal_state_failed import RevenueWithdrawalStateFailed
+
+RevenueWithdrawalState = Union[RevenueWithdrawalStatePending, RevenueWithdrawalStateSucceeded, RevenueWithdrawalStateFailed]

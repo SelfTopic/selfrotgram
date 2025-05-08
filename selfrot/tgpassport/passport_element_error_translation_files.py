@@ -1,7 +1,6 @@
 from typing import List
 from pydantic import BaseModel
 
-
 class PassportElementErrorTranslationFiles(BaseModel):
     source: str
     type: str

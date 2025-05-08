@@ -1,3 +1,4 @@
+from typing import Self
 from pydantic import BaseModel
 from .chat_boost_source import ChatBoostSource
 

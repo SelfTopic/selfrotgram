@@ -1,6 +1,5 @@
 from pydantic import BaseModel, Field
 
-
 class PassportElementErrorDataField(BaseModel):
     source: str
     type: str

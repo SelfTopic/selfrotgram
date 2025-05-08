@@ -1,7 +1,6 @@
 from typing import Optional
 from pydantic import BaseModel
 
-
 class ChatAdministratorRights(BaseModel):
     is_anonymous: bool
     can_manage_chat: bool

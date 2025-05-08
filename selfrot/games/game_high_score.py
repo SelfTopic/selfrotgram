@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from ..types.user import User
+from ..types import User
 
 
 class GameHighScore(BaseModel):

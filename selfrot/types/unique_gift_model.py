@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from ..stickers.sticker import Sticker
+from ..stickers import Sticker
 
 class UniqueGiftModel(BaseModel):
     name: str

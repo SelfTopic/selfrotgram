@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Self
 from pydantic import BaseModel
 from .poll_option import PollOption
 from .message_entity import MessageEntity

@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 
-
 class StoryAreaPosition(BaseModel):
     x_percentage: float
     y_percentage: float

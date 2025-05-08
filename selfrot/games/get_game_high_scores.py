@@ -1,5 +1,5 @@
 from typing import Optional, ClassVar
-from ..methods.base import TelegramAPIMethod
+from ..methods import TelegramAPIMethod
 from dataclasses import dataclass
 
 

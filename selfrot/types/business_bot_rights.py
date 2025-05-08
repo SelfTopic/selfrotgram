@@ -1,7 +1,6 @@
 from typing import Optional
 from pydantic import BaseModel
 
-
 class BusinessBotRights(BaseModel):
     can_reply: Optional[bool] = None
     can_read_messages: Optional[bool] = None

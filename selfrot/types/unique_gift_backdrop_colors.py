@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 
-
 class UniqueGiftBackdropColors(BaseModel):
     center_color: int
     edge_color: int

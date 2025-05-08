@@ -1,6 +1,5 @@
 from typing import List, Optional, ClassVar
-from ..methods.base import TelegramAPIMethod
-from pydantic import BaseModel
+from ..methods import TelegramAPIMethod
 from dataclasses import dataclass
 from .input_sticker import InputSticker
 

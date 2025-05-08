@@ -2,6 +2,7 @@ from .passport_data import PassportData
 from .passport_file import PassportFile
 from .encrypted_passport_element import EncryptedPassportElement
 from .encrypted_credentials import EncryptedCredentials
+from .set_passport_data_errors import SetPassportDataErrors
 from .passport_element_error import PassportElementError
 from .passport_element_error_data_field import PassportElementErrorDataField
 from .passport_element_error_front_side import PassportElementErrorFrontSide

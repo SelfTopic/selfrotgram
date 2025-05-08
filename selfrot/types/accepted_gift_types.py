@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 
-
 class AcceptedGiftTypes(BaseModel):
     unlimited_gifts: bool
     limited_gifts: bool

@@ -1,5 +1,3 @@
-from typing import Optional, Union, List
-from pydantic import BaseModel
 
 # class: start
 class PassportData(BaseModel):
@@ -34,6 +32,18 @@ class EncryptedCredentials(BaseModel):
     data: str
     hash: str
     secret: str
+# class: end
+
+# class: start
+@dataclass
+class SetPassportDataErrors(TelegramAPIMethod):
+    __api_method__: ClassVar[str] = "setPassportDataErrors"
+    user_id: int
+    errors: Union[List[PassportElementError]]
+# class: end
+
+# class: start
+PassportElementError = Union[PassportElementErrorDataField, PassportElementErrorFrontSide, PassportElementErrorReverseSide, PassportElementErrorSelfie, PassportElementErrorFile, PassportElementErrorFiles, PassportElementErrorTranslationFile, PassportElementErrorTranslationFiles, PassportElementErrorUnspecified]
 # class: end
 
 # class: start

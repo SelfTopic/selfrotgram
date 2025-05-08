@@ -1,7 +1,6 @@
 from typing import Optional
 from pydantic import BaseModel
 
-
 class ChatPermissions(BaseModel):
     can_send_messages: Optional[bool] = None
     can_send_audios: Optional[bool] = None

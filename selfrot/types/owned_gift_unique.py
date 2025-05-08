@@ -1,7 +1,7 @@
 from typing import Optional
 from pydantic import BaseModel
-from .user import User
 from .unique_gift import UniqueGift
+from .user import User
 
 class OwnedGiftUnique(BaseModel):
     type: str

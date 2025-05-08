@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Self
 from pydantic import BaseModel
 from .business_opening_hours_interval import BusinessOpeningHoursInterval
 

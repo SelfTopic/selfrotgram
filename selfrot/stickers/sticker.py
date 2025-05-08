@@ -1,8 +1,8 @@
 from typing import Optional
 from pydantic import BaseModel
+from ..types import File
+from ..types import PhotoSize
 from .mask_position import MaskPosition
-from ..types.photo_size import PhotoSize
-from ..types.file import File
 
 class Sticker(BaseModel):
     file_id: str

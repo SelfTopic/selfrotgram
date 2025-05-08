@@ -1,0 +1,5 @@
+from typing import Union, Self
+from .input_profile_photo_static import InputProfilePhotoStatic
+from .input_profile_photo_animated import InputProfilePhotoAnimated
+
+InputProfilePhoto = Union[InputProfilePhotoStatic, InputProfilePhotoAnimated]

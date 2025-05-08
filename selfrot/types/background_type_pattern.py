@@ -1,7 +1,7 @@
 from typing import Optional
 from pydantic import BaseModel
-from .document import Document
 from .background_fill import BackgroundFill
+from .document import Document
 
 class BackgroundTypePattern(BaseModel):
     type: str

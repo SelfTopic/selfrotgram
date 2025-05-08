@@ -1,7 +1,6 @@
 from typing import Optional
 from pydantic import BaseModel
 
-
 class KeyboardButtonRequestUsers(BaseModel):
     request_id: int
     user_is_bot: Optional[bool] = None

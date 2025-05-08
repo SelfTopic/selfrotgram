@@ -1,7 +1,7 @@
 from typing import Union, List, Optional
 from pydantic import BaseModel
-from .passport_file import [PassportFile
 from .passport_file import PassportFile
+from .passport_file import [PassportFile
 
 class EncryptedPassportElement(BaseModel):
     type: str

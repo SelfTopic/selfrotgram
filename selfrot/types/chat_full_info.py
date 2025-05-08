@@ -1,16 +1,16 @@
 from typing import List, Optional
 from pydantic import BaseModel
-from .chat import Chat
 from .birthdate import Birthdate
-from .accepted_gift_types import AcceptedGiftTypes
+from .business_opening_hours import BusinessOpeningHours
+from .reaction_type import ReactionType
 from .chat_location import ChatLocation
 from .business_intro import BusinessIntro
-from .reaction_type import ReactionType
+from .accepted_gift_types import AcceptedGiftTypes
 from .business_location import BusinessLocation
 from .chat_photo import ChatPhoto
+from .chat import Chat
 from .chat_permissions import ChatPermissions
 from .message import Message
-from .business_opening_hours import BusinessOpeningHours
 
 class ChatFullInfo(BaseModel):
     id: int

@@ -1,8 +1,5 @@
-from typing import Union
-from .input_paid_media_photo import InputPaidMediaPhoto
+from typing import Union, Self
 from .input_paid_media_video import InputPaidMediaVideo
+from .input_paid_media_photo import InputPaidMediaPhoto
 
-InputPaidMedia = Union[
-	InputPaidMediaPhoto,
-	InputPaidMediaVideo
-]
+InputPaidMedia = Union[InputPaidMediaPhoto, InputPaidMediaVideo]

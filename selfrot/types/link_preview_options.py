@@ -1,7 +1,6 @@
 from typing import Optional
 from pydantic import BaseModel
 
-
 class LinkPreviewOptions(BaseModel):
     is_disabled: Optional[bool] = None
     url: Optional[str] = None

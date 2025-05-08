@@ -1,8 +1,6 @@
 from typing import List, ClassVar
-from ..methods.base import TelegramAPIMethod
-from pydantic import BaseModel
+from ..methods import TelegramAPIMethod
 from dataclasses import dataclass
-
 
 @dataclass
 class GetCustomEmojiStickers(TelegramAPIMethod):

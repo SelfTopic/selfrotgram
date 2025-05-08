@@ -1,10 +1,10 @@
 from typing import Optional
 from pydantic import BaseModel
 from .copy_text_button import CopyTextButton
-from ..games.callback_game import CallbackGame
-from .login_url import LoginUrl
 from .switch_inline_query_chosen_chat import SwitchInlineQueryChosenChat
+from .login_url import LoginUrl
 from .web_app_info import WebAppInfo
+from ..games import CallbackGame
 
 class InlineKeyboardButton(BaseModel):
     text: str

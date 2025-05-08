@@ -1,7 +1,7 @@
 from typing import Optional, ClassVar
-from ..methods.base import TelegramAPIMethod
+from ..methods import TelegramAPIMethod
 from dataclasses import dataclass
-from ..types.reply_parameters import ReplyParameters
+from ..types import ReplyParameters
 # from ..types.inline_keyboard_markup import InlineKeyboardMarkup
 
 

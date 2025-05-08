@@ -1,6 +1,6 @@
 from typing import Optional
 from pydantic import BaseModel
-
+from .unique_gift import UniqueGift
 
 class UniqueGiftInfo(BaseModel):
     gift: UniqueGift

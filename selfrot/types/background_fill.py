@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Self
 from .background_fill_solid import BackgroundFillSolid
 from .background_fill_gradient import BackgroundFillGradient
 from .background_fill_freeform_gradient import BackgroundFillFreeformGradient

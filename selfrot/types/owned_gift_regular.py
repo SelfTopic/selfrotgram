@@ -1,8 +1,8 @@
 from typing import List, Optional
 from pydantic import BaseModel
-from .gift import Gift
-from .user import User
 from .message_entity import MessageEntity
+from .user import User
+from .gift import Gift
 
 class OwnedGiftRegular(BaseModel):
     type: str

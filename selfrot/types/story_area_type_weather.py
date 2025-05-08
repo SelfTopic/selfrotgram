@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 
-
 class StoryAreaTypeWeather(BaseModel):
     type: str
     temperature: float

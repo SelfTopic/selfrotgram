@@ -1,7 +1,7 @@
 from typing import Optional
 from pydantic import BaseModel
-from .user import User
 from .business_bot_rights import BusinessBotRights
+from .user import User
 
 class BusinessConnection(BaseModel):
     id: str

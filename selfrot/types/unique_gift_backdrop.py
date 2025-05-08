@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Self
 from pydantic import BaseModel
 from .unique_gift_backdrop_colors import UniqueGiftBackdropColors
 

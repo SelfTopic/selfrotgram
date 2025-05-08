@@ -1,7 +1,6 @@
 from typing import Optional
 from pydantic import BaseModel
 
-
 class Voice(BaseModel):
     file_id: str
     file_unique_id: str

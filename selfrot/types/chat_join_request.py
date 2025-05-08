@@ -1,5 +1,6 @@
 from typing import Optional
 from pydantic import BaseModel, Field
+from .chat import Chat
 from .chat_invite_link import ChatInviteLink
 from .user import User
 

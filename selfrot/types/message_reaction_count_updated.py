@@ -1,5 +1,6 @@
 from typing import List
 from pydantic import BaseModel
+from .chat import Chat
 from .reaction_count import ReactionCount
 
 class MessageReactionCountUpdated(BaseModel):

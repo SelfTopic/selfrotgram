@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 
-
 class MaskPosition(BaseModel):
     point: str
     x_shift: float

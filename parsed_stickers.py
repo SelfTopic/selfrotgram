@@ -1,6 +1,3 @@
-from typing import Optional, Union, List, ClassVar
-from pydantic import BaseModel
-from dataclasses import dataclass
 
 # class: start
 class Sticker(BaseModel):

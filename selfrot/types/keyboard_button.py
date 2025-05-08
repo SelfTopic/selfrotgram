@@ -1,8 +1,8 @@
-from typing import Optional
+from typing import Optional, Self
 from pydantic import BaseModel
-from .keyboard_button_request_chat import KeyboardButtonRequestChat
 from .keyboard_button_poll_type import KeyboardButtonPollType
 from .keyboard_button_request_users import KeyboardButtonRequestUsers
+from .keyboard_button_request_chat import KeyboardButtonRequestChat
 from .web_app_info import WebAppInfo
 
 class KeyboardButton(BaseModel):

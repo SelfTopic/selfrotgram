@@ -1,6 +1,6 @@
 from typing import List, Optional
 from pydantic import BaseModel
-
+from .chat import Chat
 
 class Giveaway(BaseModel):
     chats: List[Chat]

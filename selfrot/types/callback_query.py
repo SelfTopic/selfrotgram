@@ -1,7 +1,7 @@
 from typing import Optional
 from pydantic import BaseModel, Field
-from .maybe_inaccessible_message import MaybeInaccessibleMessage
 from .user import User
+from .maybe_inaccessible_message import MaybeInaccessibleMessage
 
 class CallbackQuery(BaseModel):
     id: str

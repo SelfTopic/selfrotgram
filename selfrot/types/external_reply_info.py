@@ -1,26 +1,27 @@
 from typing import Union, List, Optional
 from pydantic import BaseModel
-from .chat import Chat
-from .animation import Animation
-from .video_note import VideoNote
-from .game import Game
-from .giveaway_winners import GiveawayWinners
-from .photo_size import PhotoSize
-from .paid_media_info import PaidMediaInfo
-from .venue import Venue
 from .dice import Dice
-from .link_preview_options import LinkPreviewOptions
-from .audio import Audio
-from .document import Document
+from ..stickers import Sticker
 from .contact import Contact
-from .poll import Poll
-from .video import Video
-from .story import Story
-from .invoice import Invoice
-from .giveaway import Giveaway
+from .document import Document
+from ..payments import Invoice
+from .message_origin import MessageOrigin
+from .animation import Animation
+from .venue import Venue
+from .video_note import VideoNote
+from .photo_size import PhotoSize
 from .location import Location
+from .giveaway import Giveaway
+from .giveaway_winners import GiveawayWinners
+from .poll import Poll
+from .paid_media_info import PaidMediaInfo
+from .chat import Chat
+from .link_preview_options import LinkPreviewOptions
 from .voice import Voice
-from ..stickers.sticker import Sticker
+from ..games import Game
+from .video import Video
+from .audio import Audio
+from .story import Story
 
 class ExternalReplyInfo(BaseModel):
     origin: MessageOrigin

@@ -1,7 +1,7 @@
-from typing import Union
-from .background_type_fill import BackgroundTypeFill
+from typing import Union, Self
 from .background_type_wallpaper import BackgroundTypeWallpaper
-from .background_type_pattern import BackgroundTypePattern
 from .background_type_chat_theme import BackgroundTypeChatTheme
+from .background_type_pattern import BackgroundTypePattern
+from .background_type_fill import BackgroundTypeFill
 
 BackgroundType = Union[BackgroundTypeFill, BackgroundTypeWallpaper, BackgroundTypePattern, BackgroundTypeChatTheme]

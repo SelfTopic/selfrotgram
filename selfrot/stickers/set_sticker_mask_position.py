@@ -1,6 +1,5 @@
 from typing import Optional, ClassVar
-from ..methods.base import TelegramAPIMethod
-from pydantic import BaseModel
+from ..methods import TelegramAPIMethod
 from dataclasses import dataclass
 from .mask_position import MaskPosition
 

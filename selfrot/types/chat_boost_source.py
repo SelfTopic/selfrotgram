@@ -1,0 +1,6 @@
+from typing import Union, Self
+from .chat_boost_source_giveaway import ChatBoostSourceGiveaway
+from .chat_boost_source_gift_code import ChatBoostSourceGiftCode
+from .chat_boost_source_premium import ChatBoostSourcePremium
+
+ChatBoostSource = Union[ChatBoostSourcePremium, ChatBoostSourceGiftCode, ChatBoostSourceGiveaway]

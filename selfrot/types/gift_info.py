@@ -1,6 +1,7 @@
 from typing import List, Optional
 from pydantic import BaseModel
 from .message_entity import MessageEntity
+from .gift import Gift
 
 class GiftInfo(BaseModel):
     gift: Gift

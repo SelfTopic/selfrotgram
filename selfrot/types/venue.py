@@ -1,6 +1,6 @@
 from typing import Optional
 from pydantic import BaseModel
-
+from .location import Location
 
 class Venue(BaseModel):
     location: Location

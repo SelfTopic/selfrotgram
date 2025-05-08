@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 
-
 class PassportElementErrorTranslationFile(BaseModel):
     source: str
     type: str

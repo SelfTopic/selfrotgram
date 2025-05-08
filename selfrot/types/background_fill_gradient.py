@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 
-
 class BackgroundFillGradient(BaseModel):
     type: str
     top_color: int

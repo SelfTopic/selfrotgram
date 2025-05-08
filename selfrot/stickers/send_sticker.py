@@ -1,21 +1,20 @@
 from typing import Union, Optional, ClassVar
-from ..methods.base import TelegramAPIMethod
-from pydantic import BaseModel
+from ..methods import TelegramAPIMethod
 from dataclasses import dataclass
-from ..types.force_reply import ForceReply
-from ..types.input_file import InputFile
-from ..types.reply_parameters import ReplyParameters
-from ..types.reply_keyboard_markup import ReplyKeyboardMarkup
-from ..types.inline_keyboard_markup import InlineKeyboardMarkup
-from ..types.reply_keyboard_remove import ReplyKeyboardRemove
+from ..types import ReplyKeyboardRemove
+from ..types import ReplyParameters
+from ..types import InlineKeyboardMarkup
+from ..types import InputFile
+from ..types import ForceReply
+from ..types import ReplyKeyboardMarkup
 
 @dataclass
 class SendSticker(TelegramAPIMethod):
     __api_method__: ClassVar[str] = "sendSticker"
-    chat_id: Union[int, str]
-    sticker: Union[InputFile, str]
     business_connection_id: Optional[str] = None
+    chat_id: Union[int, str]
     message_thread_id: Optional[int] = None
+    sticker: Union[InputFile, str]
     emoji: Optional[str] = None
     disable_notification: Optional[bool] = None
     protect_content: Optional[bool] = None

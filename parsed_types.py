@@ -1,5 +1,3 @@
-from typing import Optional, List, Union
-from pydantic import BaseModel, Field
 
 # class: start
 class User(BaseModel):
@@ -184,6 +182,10 @@ class InaccessibleMessage(BaseModel):
 # class: end
 
 # class: start
+MaybeInaccessibleMessage = Union[Message, InaccessibleMessage]
+# class: end
+
+# class: start
 class MessageEntity(BaseModel):
     type: str
     offset: int
@@ -239,6 +241,10 @@ class ReplyParameters(BaseModel):
     quote_parse_mode: Optional[str] = None
     quote_entities: Optional[List[MessageEntity]] = None
     quote_position: Optional[int] = None
+# class: end
+
+# class: start
+MessageOrigin = Union[MessageOriginUser, MessageOriginHiddenUser, MessageOriginChat, MessageOriginChannel]
 # class: end
 
 # class: start
@@ -364,6 +370,10 @@ class PaidMediaInfo(BaseModel):
 # class: end
 
 # class: start
+PaidMedia = Union[PaidMediaPreview, PaidMediaPhoto, PaidMediaVideo]
+# class: end
+
+# class: start
 class PaidMediaPreview(BaseModel):
     type: str
     width: Optional[int] = None
@@ -483,6 +493,10 @@ class ChatBoostAdded(BaseModel):
 # class: end
 
 # class: start
+BackgroundFill = Union[BackgroundFillSolid, BackgroundFillGradient, BackgroundFillFreeformGradient]
+# class: end
+
+# class: start
 class BackgroundFillSolid(BaseModel):
     type: str
     color: int
@@ -500,6 +514,10 @@ class BackgroundFillGradient(BaseModel):
 class BackgroundFillFreeformGradient(BaseModel):
     type: str
     colors: List[int]
+# class: end
+
+# class: start
+BackgroundType = Union[BackgroundTypeFill, BackgroundTypeWallpaper, BackgroundTypePattern, BackgroundTypeChatTheme]
 # class: end
 
 # class: start
@@ -547,9 +565,69 @@ class ForumTopicCreated(BaseModel):
 # class: end
 
 # class: start
+from typing import Any
+from pydantic_core import core_schema
+from pydantic import GetCoreSchemaHandler
+
+class ForumTopicClosed():
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls,
+        source: type[Any],
+        handler: GetCoreSchemaHandler,
+    ) -> core_schema.CoreSchema:
+        return core_schema.any_schema()
+# class: end
+
+# class: start
 class ForumTopicEdited(BaseModel):
     name: Optional[str] = None
     icon_custom_emoji_id: Optional[str] = None
+# class: end
+
+# class: start
+from typing import Any
+from pydantic_core import core_schema
+from pydantic import GetCoreSchemaHandler
+
+class ForumTopicReopened():
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls,
+        source: type[Any],
+        handler: GetCoreSchemaHandler,
+    ) -> core_schema.CoreSchema:
+        return core_schema.any_schema()
+# class: end
+
+# class: start
+from typing import Any
+from pydantic_core import core_schema
+from pydantic import GetCoreSchemaHandler
+
+class GeneralForumTopicHidden():
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls,
+        source: type[Any],
+        handler: GetCoreSchemaHandler,
+    ) -> core_schema.CoreSchema:
+        return core_schema.any_schema()
+# class: end
+
+# class: start
+from typing import Any
+from pydantic_core import core_schema
+from pydantic import GetCoreSchemaHandler
+
+class GeneralForumTopicUnhidden():
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls,
+        source: type[Any],
+        handler: GetCoreSchemaHandler,
+    ) -> core_schema.CoreSchema:
+        return core_schema.any_schema()
 # class: end
 
 # class: start
@@ -586,6 +664,21 @@ class WriteAccessAllowed(BaseModel):
 # class: start
 class VideoChatScheduled(BaseModel):
     start_date: int
+# class: end
+
+# class: start
+from typing import Any
+from pydantic_core import core_schema
+from pydantic import GetCoreSchemaHandler
+
+class VideoChatStarted():
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls,
+        source: type[Any],
+        handler: GetCoreSchemaHandler,
+    ) -> core_schema.CoreSchema:
+        return core_schema.any_schema()
 # class: end
 
 # class: start
@@ -657,7 +750,7 @@ class LinkPreviewOptions(BaseModel):
 # class: start
 class UserProfilePhotos(BaseModel):
     total_count: int
-    photos: List[List[PhotoSize]]
+    photos: List[Array of PhotoSize]
 # class: end
 
 # class: start
@@ -675,7 +768,7 @@ class WebAppInfo(BaseModel):
 
 # class: start
 class ReplyKeyboardMarkup(BaseModel):
-    keyboard: List[List[KeyboardButton]]
+    keyboard: List[Array of KeyboardButton]
     is_persistent: Optional[bool] = None
     resize_keyboard: Optional[bool] = None
     one_time_keyboard: Optional[bool] = None
@@ -733,7 +826,7 @@ class ReplyKeyboardRemove(BaseModel):
 
 # class: start
 class InlineKeyboardMarkup(BaseModel):
-    inline_keyboard: List[List[InlineKeyboardButton]]
+    inline_keyboard: List[Array of InlineKeyboardButton]
 # class: end
 
 # class: start
@@ -843,6 +936,10 @@ class ChatMemberUpdated(BaseModel):
     invite_link: Optional[ChatInviteLink] = None
     via_join_request: Optional[bool] = None
     via_chat_folder_invite_link: Optional[bool] = None
+# class: end
+
+# class: start
+ChatMember = Union[ChatMemberOwner, ChatMemberAdministrator, ChatMemberMember, ChatMemberRestricted, ChatMemberLeft, ChatMemberBanned]
 # class: end
 
 # class: start
@@ -997,6 +1094,10 @@ class LocationAddress(BaseModel):
 # class: end
 
 # class: start
+StoryAreaType = Union[StoryAreaTypeLocation, StoryAreaTypeSuggestedReaction, StoryAreaTypeLink, StoryAreaTypeWeather, StoryAreaTypeUniqueGift]
+# class: end
+
+# class: start
 class StoryAreaTypeLocation(BaseModel):
     type: str
     latitude: float
@@ -1042,6 +1143,10 @@ class StoryArea(BaseModel):
 class ChatLocation(BaseModel):
     location: Location
     address: str
+# class: end
+
+# class: start
+ReactionType = Union[ReactionTypeEmoji, ReactionTypeCustomEmoji, ReactionTypePaid]
 # class: end
 
 # class: start
@@ -1169,6 +1274,10 @@ class UniqueGiftInfo(BaseModel):
 # class: end
 
 # class: start
+OwnedGift = Union[OwnedGiftRegular, OwnedGiftUnique]
+# class: end
+
+# class: start
 class OwnedGiftRegular(BaseModel):
     type: str
     gift: Gift
@@ -1222,6 +1331,10 @@ class StarAmount(BaseModel):
 class BotCommand(BaseModel):
     command: str
     description: str
+# class: end
+
+# class: start
+BotCommandScope = Union[BotCommandScopeDefault, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats, BotCommandScopeAllChatAdministrators, BotCommandScopeChat, BotCommandScopeChatAdministrators, BotCommandScopeChatMember]
 # class: end
 
 # class: start
@@ -1279,6 +1392,10 @@ class BotShortDescription(BaseModel):
 # class: end
 
 # class: start
+MenuButton = Union[MenuButtonCommands, MenuButtonWebApp, MenuButtonDefault]
+# class: end
+
+# class: start
 class MenuButtonCommands(BaseModel):
     type: str
 # class: end
@@ -1293,6 +1410,10 @@ class MenuButtonWebApp(BaseModel):
 # class: start
 class MenuButtonDefault(BaseModel):
     type: str
+# class: end
+
+# class: start
+ChatBoostSource = Union[ChatBoostSourcePremium, ChatBoostSourceGiftCode, ChatBoostSourceGiveaway]
 # class: end
 
 # class: start
@@ -1385,6 +1506,10 @@ class ResponseParameters(BaseModel):
 # class: end
 
 # class: start
+InputMedia = Union[InputMediaAnimation, InputMediaDocument, InputMediaAudio, InputMediaPhoto, InputMediaVideo]
+# class: end
+
+# class: start
 class InputMediaPhoto(BaseModel):
     type: str
     media: str
@@ -1453,6 +1578,25 @@ class InputMediaDocument(BaseModel):
 # class: end
 
 # class: start
+from typing import Any
+from pydantic_core import core_schema
+from pydantic import GetCoreSchemaHandler
+
+class InputFile():
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls,
+        source: type[Any],
+        handler: GetCoreSchemaHandler,
+    ) -> core_schema.CoreSchema:
+        return core_schema.any_schema()
+# class: end
+
+# class: start
+InputPaidMedia = Union[InputPaidMediaPhoto, InputPaidMediaVideo]
+# class: end
+
+# class: start
 class InputPaidMediaPhoto(BaseModel):
     type: str
     media: str
@@ -1472,6 +1616,10 @@ class InputPaidMediaVideo(BaseModel):
 # class: end
 
 # class: start
+InputProfilePhoto = Union[InputProfilePhotoStatic, InputProfilePhotoAnimated]
+# class: end
+
+# class: start
 class InputProfilePhotoStatic(BaseModel):
     type: str
     photo: str
@@ -1482,6 +1630,10 @@ class InputProfilePhotoAnimated(BaseModel):
     type: str
     animation: str
     main_frame_timestamp: Optional[float] = None
+# class: end
+
+# class: start
+InputStoryContent = Union[InputStoryContentPhoto, InputStoryContentVideo]
 # class: end
 
 # class: start

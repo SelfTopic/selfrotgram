@@ -1,7 +1,6 @@
 from typing import Optional
 from pydantic import BaseModel
 
-
 class SwitchInlineQueryChosenChat(BaseModel):
     query: Optional[str] = None
     allow_user_chats: Optional[bool] = None
