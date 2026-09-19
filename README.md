@@ -88,12 +88,22 @@ class Root(BaseDispatcher[AppContext]):
 - **Диспетчер:** long polling и вебхуки, параллельная обработка, `on_startup`/`on_shutdown`,
   `on_error`, мидлвари с `pre_handle`/`post_handle`, корректная остановка по SIGTERM.
 - **Клавиатуры:** `InlineKeyboard`, `button()` с проверкой лимитов Telegram.
+- **Диалоги (FSM):** `States`, `State(Model)` с типизированными данными, `ctx.fsm`,
+  `InState`, `MemoryStorage(ttl=...)`.
 
 Подробно про решения и причины: [DESIGN.md](DESIGN.md).
 
 ## Разработка
 
 ```bash
-python scripts/generate_types.py           # перегенерировать типы и методы из scripts/spec
-python scripts/generate_types.py --fetch   # скачать свежую спецификацию
+poetry install                              # библиотека и dev-зависимости (pytest)
+poetry run pytest                           # ~200 тестов, около 15 секунд, без сети
+python -m examples.echo_bot                 # живой запуск примера, см. examples/README.md
+
+python scripts/generate_types.py            # перегенерировать типы и методы из scripts/spec
+python scripts/generate_types.py --fetch    # скачать свежую спецификацию
 ```
+
+Тесты не ходят в Telegram: `tests/conftest.py` поднимает на localhost фейковый сервер Bot API
+(`telegram`), записывающий все вызовы, и сборщики апдейтов. Каждый пример из `examples/`
+дополнительно собирается в диспетчер в `tests/test_examples.py`, чтобы не устаревать.

@@ -34,3 +34,16 @@ Repository = "https://github.com/SelfTopic/selfrotgram"
 # Ставится как selfrotgram, импортируется как selfrot (py.typed внутри пакета).
 [tool.poetry]
 packages = [{include = "selfrot"}]
+
+[dependency-groups]
+dev = [
+    "pytest (>=9.1.1,<10.0.0)",
+    "pytest-asyncio (>=1.4.0,<2.0.0)",
+    # для примеров (db_bot, bot_command)
+    "sqlalchemy (>=2.0.41,<3.0.0)",
+    "aiosqlite (>=0.22.1,<0.23.0)",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
