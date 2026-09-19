@@ -1,0 +1,972 @@
+# selfrotgram — дизайн-документ
+
+Живой документ. Обновляется вместе с кодом (как `ARCHITECTURE.md` /
+`BATTLE_DESIGN.md` в `chestor_bot`), а не отдельно от него.
+
+## Зачем
+
+Своя асинхронная библиотека для Telegram Bot API. Не "ещё один клон
+aiogram" — попытка взять то, что реально нравится, из двух разных
+экосистем:
+
+- **aiogram** (Python) — эталон по охвату Bot API и структуре
+  (Router/Filter/Middleware/FSM), но неудобный DX в мелочах.
+- **grammY** (TypeScript) — эталон по эргономике `Context`: один объект,
+  который сам знает, как ответить на то, что в нём лежит
+  (`ctx.reply()`, `ctx.answerCallbackQuery()`), без ручного протаскивания
+  `chat_id`/`message_id` по коду.
+
+Финальная цель-маяк (не обязательство по срокам): суметь перенести на
+эту библиотеку `chestor_bot` (197 файлов, aiogram 3 + SQLAlchemy +
+боевой движок) и не переписывать при этом бизнес-логику насильно под
+чужие ограничения.
+
+## Текущее состояние (аудит на 2026-09-18)
+
+Что реально есть и работает — проверено живым запуском (`examples/echo_bot.py`,
+эхо через реальный `@nu_nuxua_sebe_bot`):
+
+| Модуль | Статус |
+|---|---|
+| `client/Bot` | `Bot(BotMethods)`: `call()` шлёт метод и разбирает результат в тип (`TypeAdapter`), ошибки Telegram — исключения (`selfrot.exceptions`), токен из конструктора или конфига, `load_me()` |
+| `client/session` (`AsyncSession`) | Работает: POST/GET через `aiohttp`, но не переиспользует `ClientSession` между вызовами аккуратно (создаётся один раз и живёт, ок) |
+| `methods` | Все 185 методов Bot API 10.3: классы (`methods/generated.py`, dataclass с аргументами, `__returning__`) и методы `Bot` (`client/methods.py`, `bot.send_message(...)`). Сгенерированы |
+| `types` | Все 400 типов Bot API 10.3 сгенерированы (`generated.py`) + 117 суженных `<Поле>Message` (`narrowed.py`), подключены через `selfrot.types`. Рукописных типов больше нет, кроме `HandlerType` |
+| `dispatcher/BaseDispatcher` | Работает end-to-end (поллинг → middleware → handler → reply), но с багами (ниже) |
+| `middleware` | Луковичная модель есть, реализован только `LoggingMiddleware` |
+| `handlers` | `BaseHandler` + 26 видов по полям `Update` (`MessageHandler`, `EditedMessageHandler`, `CallbackQueryHandler`, `MyChatMemberHandler`, ...), сгенерированы (`handlers/kinds.py`) |
+| `filter/base.py` | **Пустой файл**. Фильтров нет вообще |
+| `router/base.py` | `BaseRouter`: handlers, middlewares и вложенные routers, поиск хендлера по дереву (см. «Router» ниже). `Dispatcher` — корневой роутер |
+| `context/BaseContext` | `BaseContext[TEvent]`: `ctx.<поле Update>` (генерируется), `ctx.event`, помощники `ctx.chat`/`chat_id`/`user`/`message_id` и 123 ярлыка методов Bot (`ctx.answer_message`, `ctx.reply_message`, `ctx.answer_callback_query`, `ctx.delete_message`, ...) |
+| `config/ConfigAPI` | Работает, читает/создаёт `.cfg` через `configparser` |
+
+### Известные баги (не архитектура, а именно баги в текущем коде)
+
+Пп. 1-3 и 5 (диспетчер) исправлены 2026-09-18, см. `dispatcher/dispatcher.py`.
+Пп. 4, 6, 7 — ещё не тронуты, не входят в диспетчер.
+
+1. ~~**`dispatcher.call_handler`** — если `handler.filter()` вернул `False`,
+   метод делает `return None`, а не `continue`.~~ **Исправлено** — теперь
+   `continue` (просто нет early return), непройденный фильтр не обрывает
+   обработку остальных хендлеров.
+2. ~~**`dispatcher.call_middleware`** — при провале `pre_handle()`
+   обработка прерывалась без отката уже отработавших middleware.~~
+   **Исправлено** — `post_handle()` теперь вызывается для всех
+   middleware, чей `pre_handle()` успел пройти, независимо от того, был
+   ли прерван весь цикл; `call_handler()` вызывается, только если все
+   `pre_handle()` прошли.
+3. ~~**`BaseDispatcher.handlers` / `.middlewares`** — мутируемые списки
+   на уровне базового класса, расшариваются между инстансами.~~
+   **Исправлено** — в `__init__` инстанс получает собственную копию
+   (`self.handlers = list(self.handlers)`), не мутирует класс-атрибут.
+4. ~~**`ConfigAPI.get_token`** — делает `print(token)`. Токен целиком
+   печатается в консоль при каждом старте бота.~~ **Исправлено** — `print`
+   удалён.
+5. ~~**Поллинг без паузы и без long-polling `timeout`**~~ **Исправлено** —
+   long polling (`polling_timeout = 30`), см. «Сеть».
+6. ~~**`Message`/`CallbackQuery` pydantic-модели** — поля без `= None`
+   делали ключ обязательным~~ **Исправлено** — типы сгенерированы, optional
+   поля `Optional[...] = None`. Проверено: фото/стикер без текста, чат без
+   `first_name`, пост канала без `from`, `callback_query`, `my_chat_member`
+   разбираются через `Update(**u)` (путь `Bot.get_updates`).
+7. ~~**`User.full_name`**~~ **Снято** — рукописный `User` удалён (нигде не
+   использовался, как и `ChatType`, `Update.callback`, `Message.reply_message`
+   с неверными именами полей).
+
+## Целевая архитектура
+
+Черновик, не финал — секции ниже стоит проходить по одной и фиксировать
+решение перед реализацией.
+
+### 1. Router + Filters (первый приоритет)
+
+- `Router` — композируемый (`dp.include_router(sub_router)`), как в
+  aiogram 3, а не плоский список хендлеров в диспетчере.
+- Каждый хендлер регистрируется на роутере через декоратор:
+  `@router.message(F.text == "/start")`.
+- Filters — объекты с `__call__`/`check(ctx) -> bool`, комбинируемые
+  через `&`, `|`, `~` (как aiogram `Filter`, а не строковые условия).
+  Базовый набор: `Command`, `Text`, `StateFilter` (после FSM).
+
+**Принято (реализовано, `selfrot/router/base.py`).** `Dispatcher` — корневой
+`BaseRouter` (как в aiogram). Роутер — класс с атрибутами `handlers`,
+`middlewares`, `routers` (классы, вложенные роутеры создаются родителем).
+
+- Поиск хендлера: сначала собственные `handlers` роутера по порядку, потом
+  вложенные `routers` по порядку, вглубь. Апдейт забирает первый подошедший.
+- Мидлвари корня (Dispatcher) — **внешние**: на каждый апдейт, даже если
+  хендлер не нашёлся. Мидлвари вложенного роутера — **внутренние**: только
+  вокруг хендлера, найденного в его поддереве, от внешнего роутера к
+  внутреннему. Иначе `GhoulMiddleware`/`ModeratorMiddleware` из `chestor_bot`
+  (отвечают пользователю, ходят в БД и в Bot API) срабатывали бы на каждое
+  сообщение, а не только на команды своей ветки. Как в aiogram.
+- Блокировка (`pre_handle() -> False`) внутреннего мидлваря поглощает апдейт:
+  дальше по дереву он не идёт. `post_handle` получают только те, чей
+  `pre_handle` прошёл, и всегда, даже если хендлер упал.
+- Следствие внутренней семантики: фильтры хендлеров выполняются до внутренних
+  мидлварей, то есть фильтр не может опираться на данные, которые кладёт
+  мидлварь роутера (как в aiogram). Тело хендлера — может.
+- Объявления `handlers`/`middlewares`/`routers`/`auto_connect` — кортежи
+  (`Sequence`), не списки: неизменяемые, так что общие на класс безопасно, а
+  линтер (Ruff RUF012) не заставляют настраивать. `register_*` пересобирают
+  кортеж у экземпляра, класс и соседние экземпляры не затрагиваются.
+- Регистрация роутеров (порядок подключения = порядок поиска): сначала
+  `routers = (Класс, ...)`, затем `auto_connect = ("путь.к.модулю", ...)`,
+  затем метод `register_routers()` с вызовами `self.register_router(...)`.
+  `register_router` принимает класс (создаётся) или экземпляр.
+- `auto_connect`: строка — модуль или пакет, в котором лежит ровно один объект
+  с именем `router` (класс или экземпляр `BaseRouter`). Папки не сканируются
+  (порядок файлов определял бы приоритет). Путь с точкой считается от пакета
+  модуля, где объявлен `auto_connect`. Пакет собирает своих детей тем же
+  механизмом (свой `router` с `auto_connect`). Ошибки — на старте: модуль не
+  найден, нет `router`, `router` не роутер, цикл в дереве (с цепочкой).
+- Проверено на реальном дереве: `examples/chestor_routers` — 47 роутеров
+  `chestor_bot` без хендлеров (42 листовых файла и 5 групп creator/ghoul/duel/
+  moderator/chat_member; 19 в корне), мидлвари-заглушки на тех же роутерах. Порядок и состав сверены
+  регулярками с кодом `chestor_bot`. Три слоя (`__init__` пакета, реэкспорт в
+  `routers/__init__.py`, `routes.py`) стали одним списком `auto_connect` на
+  каждом уровне. `python -m examples.chestor_routers` печатает дерево.
+- Не сделано: собственные контексты роутеров (решим по ходу).
+- Порядок мидлварей как в aiogram: первый в списке — самый внешний
+  (`[Logging, Database]` даёт `Logging.pre Database.pre handler Database.post
+  Logging.post`). Так же между роутерами: мидлвари родителя снаружи, вложенного
+  внутри.
+- Фильтры асинхронные (`async def check`): им нужно ходить в кеш и БД
+  (как `RpCommandFilter` в `chestor_bot`). Данные во вложенный хендлер фильтр
+  не передаёт — это делает `pre_handle` хендлера.
+
+### 2. FSM
+
+- Нужен для многошаговых сценариев (бои, прокачка в `chestor_bot`).
+- Хранилище через интерфейс (`StorageBase`), реализация по умолчанию —
+  in-memory, остальное (Redis и т.п.) — опционально, не обязаловка для
+  ядра.
+- `ctx.state.set(...)`/`ctx.state.get()` в духе grammY session-плагина,
+  а не отдельный объект, который нужно доставать руками из DI.
+
+### 3. Context — типизация по типу апдейта
+
+- Один `BaseContext` — база, но для конкретных хендлеров (`MessageHandler`,
+  `CallbackHandler`) контекст должен typing-гарантированно давать нужные
+  поля (`ctx.message` не `Optional`, а обязательный, внутри
+  `MessageHandler`).
+- Методы-ответы по контексту: `answer_message`, `reply_message`,
+  `answer_callback_query` и остальные ярлыки (см. «Ярлыки на контексте»).
+
+**Принято (реализовано, `examples/bot_command`).** Цель — писать хендлер
+без проверок и без своих фильтров:
+
+```python
+class BotHandler(MessageHandler[AppContext[TextMessage]]):
+    query = Text("бот", ignore_case=True)
+    # self.ctx.message.text здесь — str
+```
+
+- `BaseContext` обобщён по типу сообщения (`BaseContext[TMsg]`, `TMsg`
+  ковариантный, по умолчанию `Optional[Message]`). Пользовательский
+  контекст наследует `BaseContext[TMsg]` и остаётся с сервисами.
+- Суженные типы сообщений (`TextMessage`, ...) поставляет библиотека:
+  frozen-подкласс `Message`, где поле объявлено без `Optional`
+  (`text: str = Field()`). Пользователь их не пишет.
+- Фильтры поставляет библиотека (`Command`, `Text`, `CallbackData`, ...). Фильтр
+  объявляет `guarantees` — тип сообщения, чьи поля `check()` уже проверил.
+- Pyright не умеет выводить тип `self.ctx` из значения `query`, `.pyi` рядом
+  с исходником при проверке самого исходника не используется (проверено),
+  плагинов у Pylance нет. Поэтому узкий тип указывается в заголовке
+  (`AppContext[TextMessage]`), а согласованность с `query` проверяется при
+  создании класса (`BaseHandler.__init_subclass__`): заявлено больше, чем
+  гарантирует фильтр, — `TypeError` на старте, а не `AttributeError` в
+  проде.
+- Какие поля тип обещает, считается по `get_type_hints` (`utils/narrowing.py`),
+  а не по `model_fields`: pydantic теряет сужение от второй базы при
+  множественном наследовании.
+- Пока не решено: сужение того, что кладут мидлвари (`ctx.db`), идёт по
+  старому пути (`BaseFilter.narrow` + подкласс контекста); комбинации
+  «фото с подписью» и число видов сообщений в библиотеке. `/cmd@bot` в
+  `Command` работает: диспетчер при старте зовёт `getMe` (`Bot.load_me`),
+  `Bot.username` сверяется без учёта регистра. Комбинации фильтров решены,
+  см. «Комбинаторы фильтров».
+
+### Типы Bot API: генерация (`scripts/generate_types.py`)
+
+Типы Bot API не пишутся руками, а генерируются из спецификации. Реализовано и
+подключено: `selfrot.types` отдаёт сгенерированные типы (`from .generated import *`,
+`from .narrowed import *`).
+
+- Источник: `PaulSonOfLars/telegram-bot-api-spec` (`api.json`), закреплён в
+  `scripts/spec/telegram-bot-api.json` (Bot API 10.3, 24.08.2026: 400 типов,
+  185 методов). Обновить: `python scripts/generate_types.py --fetch`.
+  Прежний кандидат (`ark0f/tg-bot-api`) отстал: версия 8.3 от февраля 2025, у
+  `User` нет 5 полей, которые реально отдаёт `getMe`. Проверять версию, а не
+  только что файл открывается.
+- Результат: `selfrot/types/generated.py` (все типы, один модуль: нет
+  циклических импортов) и `selfrot/types/narrowed.py` (по одному
+  `<Поле>Message` на каждое optional-поле `Message`, 117 штук; для сужения
+  через cast, в рантайме не создаются, сборка отложена).
+- Модели frozen, лишние поля игнорируются (Telegram растёт), обязательные поля
+  без `= None`, optional — `Optional[...] = None`. Поле `from` → `user` (alias
+  `from`, как в `selfrot`; конфликтов с настоящим полем `user` в спеке нет).
+  Описания полей — attribute docstring (видны при наведении в IDE).
+- Объединения: если у всех подтипов есть поле с `always “x”` (`type`/`status`/
+  `source`), это дискриминированный `Union` (`ChatMember`, `MessageOrigin`,
+  `ReactionType`, ...), иначе обычный (`MaybeInaccessibleMessage`). `RichText`
+  рекурсивный: `TypeAliasType`, объявлен до классов (иначе pyright
+  отвергает ссылку на себя).
+- Цена: импорт `generated`+`narrowed` ≈ 3 с (создание ~490 pydantic-классов,
+  `defer_build` помогает только суженным: 2.8 → 0.6 с). Первая валидация
+  `Update` ещё 0.2 с.
+- Сгенерированные файлы помечены `# ruff: noqa` (иначе ~1100 замечаний при
+  включённых UP-правилах); pyright по ним чист.
+- Импорт `selfrot` теперь ≈ 2–5 с (обычный, без ленивой загрузки `narrowed`:
+  решили пока не усложнять; вариант на потом — PEP 562 `__getattr__`).
+- Суженные типы генерируются для `Message` (117) и для каждого объекта, который
+  Bot API кладёт в `Update` (ещё 33: `DataCallbackQuery`, `MessageCallbackQuery`,
+  `InviteLinkChatMemberUpdated`, `ExplanationPoll`, ...). Имя: `<Поле><Тип>`.
+  `required_fields` определяет корень по MRO (ближайший класс из `generated`),
+  поэтому работает для любого из них. Комбинации — наследованием в пределах
+  одного корня.
+
+### Комбинаторы фильтров (`selfrot/filter/base.py`)
+
+`&`, `|`, `~` строят фильтр из фильтров; у хендлера по-прежнему один `query`.
+
+```python
+class Captioned(MessageHandler[AppContext[PhotoCaption]]):
+    query = HasPhoto() & HasCaption()          # PhotoCaption = PhotoMessage + CaptionMessage
+```
+
+- Каждый фильтр отдаёт `guarantee()`: корневой тип Bot API и множество полей,
+  которые `check()` уже проверил. Комбинатор считает итог сам:
+  `a & b` — объединение полей, `a | b` — пересечение (обещают обе ветки),
+  `~a` — ничего (только корень). Заголовок хендлера сверяется с итогом при
+  создании класса: `HasPhoto() | HasCaption()` в заголовке `PhotoCaption` —
+  `TypeError: ... не гарантирует поля: caption, photo`.
+- Корни должны совпадать (`HasText & HasDataCallbackQuery` — `TypeError` при
+  создании фильтра). Исключение — фильтр без `guarantees` (корень `None`):
+  такой подходит любому виду обработчика и ничего не обещает.
+- Свой фильтр — только `check()`, объявлять ничего не нужно. `HasText() &
+  OnlyPrivate()` даёт `text`; `OnlyPrivate() | HasText()` — ничего (проверено).
+- Вычисление ленивое, слева направо: правая часть `&` не зовётся после `False`,
+  правая часть `|` — после `True`. Дорогой фильтр (БД, кеш) ставим справа.
+- Аннотация `guarantees: type[...]` в подклассах убрана: перекрытие `ClassVar`
+  ломало инвариантность в pyright, хватает присваивания `guarantees = TextMessage`.
+- Pyright: `self.ctx.message.text` в `HasText() & Custom()` выводится как `str`;
+  тип берётся из заголовка, комбинаторы на статику не влияют.
+
+### Строковые фильтры и `Command` (`filter/strings.py`, `text.py`, `callback.py`, `command.py`)
+
+Источник строки и способ сравнения собираются наследованием: `class Text(Equals,
+TextSource)`. Семейства `Text*` (`message.text`, гарантирует `TextMessage`) и
+`CallbackData*` (`callback_query.data`, гарантирует `DataCallbackQuery`) с
+одинаковым набором: без суффикса (равно), `Startswith`, `Endswith`, `Contains`,
+`Regexp`. Читают `ctx.event`, поэтому работают в любом виде обработчика.
+
+```python
+class Mut(MessageHandler[AppContext[TextMessage]]):
+    pattern = TextRegexp(r"(\w+) мут (\d+)")
+    query = pattern
+
+    async def pre_handle(self):
+        self.who, self.minutes = self.pattern.match(self.ctx).groups()
+
+class Say(MessageHandler[AppContext[TextMessage]]):
+    cmd = Command("бот скажи", prefixes="", ignore_case=True)   # или prefixes="/!"
+    query = cmd
+    async def handle(self): text = self.cmd.parse(self.ctx).rest
+```
+
+- Регистр: `ignore_case=False` по умолчанию, включается явно (`casefold`). Раньше
+  `TextEquals` молча сравнивал без регистра — убран вместе с именем.
+- **Результат разбора в фильтре не хранится**: `query` один на класс, а апдейты
+  идут параллельно. Хендлер берёт его явно: `TextRegexp.match(ctx)` даёт
+  `re.Match[str]`, `Command.parse(ctx)` — `CommandCall(prefix, args, rest)`.
+  Возврат не Optional (никаких `assert` в хендлере); если вызвать без успешного
+  `check()`, будет `LookupError`. Фильтр держим в атрибуте (`pattern`, `cmd`),
+  а `query = pattern` — потому что pyright видит `self.query` как базовый
+  `BaseFilter`, и методов подкласса на нём нет.
+- `Regexp`: `re.match` (с начала строки), `full=True` — `re.fullmatch`.
+- `Command`: имя из нескольких слов (`"бот скажи"`), `prefixes` — строка
+  односимвольных префиксов (`"/!"`, `""` — без префикса), `args_count` точно.
+  `@username` разбирается только с префиксом `/`. Имя с префиксом внутри —
+  `ValueError` при создании.
+- Ещё нет: те же семейства для `caption`, `inline_query.query`.
+
+### Виды обработчиков и `ctx.<поле>` (сгенерировано)
+
+Каждое поле `Update` — это отдельный вид обработчика, и разработчик выбирает его
+явно (как `router.message` / `router.edited_message` в aiogram). Общего
+«один message на все виды» нет.
+
+```python
+class Duel(CallbackQueryHandler[AppContext[DataCallbackQuery]]):
+    query = DataStartsWith("duel:")
+
+    async def handle(self):
+        self.ctx.callback_query.data      # str
+```
+
+- Вид задаёт `update_field` и `payload_type` (`handlers/kinds.py`). Хендлер
+  вызывается только когда заполнено именно это поле.
+- Обработчик получает объект через `ctx.<имя поля>` (`ctx.message`,
+  `ctx.edited_message`, `ctx.callback_query`, `ctx.my_chat_member`, ...).
+  Тип берётся из заголовка: `AppContext[TextMessage]` даёт `ctx.message:
+  TextMessage`, а `ctx.callback_query` в нём — ошибка типов (self-типизированные
+  property). Без параметра `ctx.message` остаётся `Optional[Message]`.
+  Параметр контекста переименован `TMsg` → `TEvent`.
+- Фильтры не привязаны к полю: читают `ctx.event` (объект того поля, которое
+  заполнено). Один `Command` работает и в `MessageHandler`, и в
+  `EditedMessageHandler`. `guarantees` фильтра может быть любым типом Bot API.
+- Проверка заголовка при старте: корневой тип заголовка совпадает с типом,
+  который получает вид обработчика, и с типом `guarantees` фильтра, и фильтр
+  гарантирует обещанные поля. Иначе `TypeError`.
+- `allowed_updates` собирается из дерева (`used_update_types`) и уходит в
+  `getUpdates`. Без него Telegram не присылает `chat_member`,
+  `message_reaction`, `message_reaction_count` (проверено по докам). Тело GET
+  Telegram читает так же, как query (проверено по `timeout`). Значение
+  «липкое» на стороне Telegram: сброс — пустой список.
+- Фильтры `Has*` (`selfrot/filter/has.py`, генерируются): по одному на каждый
+  суженный тип, «у объекта вида заполнено поле». Имя: для `Message` короткое
+  (`HasText`, `HasPhoto`, `HasCaption`, `HasUser`), для остальных с типом
+  (`HasDataCallbackQuery`, `HasInviteLinkChatMemberUpdated`). Каждый
+  гарантирует свой суженный тип, поэтому «ловить весь текст» — это
+  `query = HasText()` в `MessageHandler[AppContext[TextMessage]]`. Приоритет —
+  порядок в `handlers`: конкретные (`Command`) ставить выше `HasText`.
+- Ограничения: `message`/`edited_message`/`channel_post`/... делят корневой тип
+  `Message` (и `chat_member`/`my_chat_member` — `ChatMemberUpdated`), поэтому
+  проверяющий типы не отличает `ctx.message` от `ctx.edited_message`: берите
+  поле своего вида. `HandlerType`
+  удалён (заменён видами).
+
+### Методы Bot API (сгенерировано)
+
+`bot.send_message(chat_id, text, *, reply_markup=..., ...)`: все 185 методов,
+типизированные аргументы и результат.
+
+- Аргументы: обязательные первыми (позиционные), необязательные после `*`
+  (у 36 методов в спеке они перемешаны). Спека помечает необязательными и
+  условно-обязательные (`editMessageText.text`: «если не задан
+  `rich_message`»), поэтому у таких методов все аргументы именованные, а
+  проверка остаётся на стороне Telegram.
+- Результат разбирается в тип из спеки: `Message`, `List[Update]`,
+  `Union[Message, bool]` (edit*: `Message` для чата, `True` для inline),
+  дискриминированное `ChatMember`. Сообщение бота, отправленное через
+  `answer_message`, теперь тоже `Message`, а не сырой dict.
+- Передача: всегда POST. Без файлов — JSON (вложенные объекты без ручного
+  `json.dumps`; модели сериализуются `by_alias`, `None` не отправляется, `False`
+  и `0` отправляются). Есть `InputFile` (`types/input_file.py`) в аргументах —
+  multipart (остальные аргументы рядом, объекты как JSON-строки). Строка
+  (`file_id`/URL) в `InputFile | str` остаётся обычным JSON.
+- Ошибки: `ok=false` → `TelegramBadRequest` (400), `TelegramUnauthorized`
+  (401), `TelegramForbidden` (403), `TelegramNotFound` (404), `TelegramConflict`
+  (409), `TelegramRetryAfter` (429, `.retry_after`), `TelegramServerError`
+  (5xx), общий `TelegramAPIError`. Сетевые сбои — `TelegramNetworkError`, см.
+  «Сеть». Диспетчер при старте (`getMe`) считает фатальными только 401/404.
+- Проверено: локальный фейк-сервер (JSON, multipart, вложенные объекты,
+  ошибки), живой Telegram (типизированные `get_*`, реальные ошибки), сквозной
+  прогон `echo_bot` на реальных апдейтах.
+- Ограничения: загрузка файлов только аргументом верхнего уровня
+  (`send_photo(photo=InputFile(...))`); `attach://` для `send_media_group`
+  и файлов внутри `InputMedia` не реализован (там пока только `file_id`/URL).
+
+### Ярлыки на контексте (сгенерировано)
+
+`ctx.answer_message("текст")`, `ctx.reply_message("текст")`,
+`ctx.answer_callback_query(text="ок")`, `ctx.delete_message()`: те же методы, что
+у `bot`, но чат, сообщение и id запроса берутся из текущего апдейта
+(`context/methods.py`, 123 штуки). Старый `ctx.reply()` убран: он писал в чат
+без цитаты, то есть был нынешним `answer_message`.
+
+- `answer_<X>` для каждого `send<X>` с обязательным `chat_id` (24): пишет в чат
+  апдейта. `reply_<X>` (21) то же, но с `reply_parameters` на сообщение
+  апдейта; если сообщения нет (`my_chat_member`), цитаты просто нет.
+- Как в aiogram, у отправки подставляются `business_connection_id` и
+  `message_thread_id` (только для тем форума) сообщения апдейта; явный
+  аргумент важнее.
+- Ответы по id (`answer_callback_query`, `answer_inline_query`,
+  `answer_shipping_query`, `answer_pre_checkout_query`): id берётся из
+  апдейта, доступны по типам только в подходящем контексте
+  (`AppContext[DataCallbackQuery]`), в контексте сообщений — ошибка типов.
+- Правки (`edit_message_text`, `edit_message_caption`, ..., 17): цель — явные
+  `chat_id`/`message_id`, иначе сообщение апдейта (для callback сообщение под
+  кнопкой), иначе `inline_message_id`.
+- Остальные методы с обязательным `chat_id` (`ban_chat_member`,
+  `pin_chat_message`, `get_chat_member`, ...): `chat_id` из апдейта; если
+  `message_id` обязателен, по умолчанию сообщение апдейта (`delete_message()`),
+  но можно передать свой. Необязательный `message_id` не подменяется
+  (`unpin_chat_message()` снимает последнее закреплённое, как в Bot API).
+  `forward_message`/`copy_message`: `from_chat_id` и `message_id` из апдейта,
+  `chat_id` (куда) явный. Для другого чата: `ctx.bot.<метод>(...)`.
+- Если в апдейте нет нужного (у `InlineQuery`, `PollAnswer` нет чата; у
+  `chat_member` нет сообщения), метод падает `RuntimeError` с понятным текстом,
+  а не отправляет запрос в никуда.
+- Проверено: фейк-сервер по видам апдейтов (сообщение, тема форума, business,
+  callback с сообщением и inline, chat_member, inline_query), pyright
+  (возвращаемые типы, отказ `answer_callback_query` в чужом контексте),
+  живой Telegram (`echo_bot` на настоящем апдейте).
+
+### Исключения (`selfrot/exceptions.py`)
+
+Один модуль (как `aiogram/exceptions.py`); пакетом станет, когда разрастётся.
+Все ошибки библиотеки наследуют `SelfrotError`, поэтому `except SelfrotError`
+ловит любую. Пустые подклассы — намеренно: важен тип, а не тело.
+
+| Класс | Когда | Совместим с |
+|---|---|---|
+| `TelegramAPIError` → `TelegramBadRequest`, `Unauthorized`, `Forbidden`, `NotFound`, `Conflict`, `ServerError`, `RetryAfter` | Bot API вернул `ok=false` (по HTTP-коду, поля `method`, `error_code`, `description`, `parameters`) | — |
+| `TelegramNetworkError` → `TelegramTimeout` | не достучались до Telegram или не дождались ответа (обрыв, DNS, VPN); не имеет `error_code` | — |
+| `ConfigError` | нет токена | — |
+| `DefinitionError` | неверное описание при создании класса или фильтра: заголовок хендлера не совпал с `query`, фильтры разных типов в `&`/`\|`, `Command("")`, не роутер в `routers` | `TypeError` |
+| `RouterError` | цикл в дереве, неверный путь `auto_connect` | `RuntimeError` |
+| `ContextError` | ярлык не подходит апдейту: нет чата, сообщения, объекта | `RuntimeError` |
+| `FilterMatchError` | `match(ctx)` / `parse(ctx)` вызван без успешного `check()` | `LookupError` |
+
+Классы, которые раньше были встроенными исключениями, наследуют и их, чтобы
+уже написанные `except TypeError`/`RuntimeError` не сломались. Голых
+`raise Exception/RuntimeError/TypeError` в коде библиотеки не осталось
+(`NotImplementedError` у абстрактных методов не считается).
+
+### Сеть: таймауты, повторы, поллинг (`client/session.py`, `bot.py`, `dispatcher.py`)
+
+Сделано под нестабильный канал (мобильный VPN). Проверено на локальном фейк-сервере:
+429, 502 с HTML, медленный ответ, закрытый порт, сбой `getUpdates`, упавший хендлер.
+
+- **Транспорт ничего не повторяет** и не пропускает чужие исключения наружу:
+  `aiohttp.ClientError` → `TelegramNetworkError`, таймаут → `TelegramTimeout`,
+  ответ не JSON (502 с HTML от прокси) → обычный `TelegramAPIError` по HTTP-коду
+  (5xx → `TelegramServerError`). В тексте ошибки токена нет: aiohttp кладёт URL
+  (`.../bot<TOKEN>/...`) в свои исключения, поэтому токен заменяется, а цепочка
+  причин обрывается (`from None`).
+- **Таймауты** задаются атрибутами класса `Bot` (диспетчер создаёт бота сам, так
+  что настройка — подклассом: `class MyBot(Bot): request_timeout = 30`):
+  `request_timeout = 60` на весь запрос, `connect_timeout = 10` на соединение
+  (мёртвая сеть падает за 10 с, а не за 5 минут, как в умолчаниях aiohttp). Для
+  `getUpdates` к таймауту добавляется его `timeout`, иначе каждый долгий пустой
+  опрос считался бы обрывом.
+- **Повтор — только там, где безопасно.** Обрыв соединения не повторяется: сообщение
+  могло уйти, и повтор его продублирует. Повторяется только `429`: Telegram запрос
+  не выполнил. `Bot.flood_retries = 3`, ждём `retry_after`, но не дольше
+  `flood_max_wait = 30` с (иначе ошибка уходит в код). `flood_retries = 0` — выкл.
+- **Long polling**: `BaseDispatcher.polling_timeout = 30` уходит в `getUpdates`;
+  пауза 1 с осталась только для `polling_timeout = 0`.
+- **Поллинг переживает сбои**: `SelfrotError` на `getUpdates` (сеть, 5xx, 409) —
+  пауза 1, 2, 4 … 30 с (сброс после успеха), `TelegramUnauthorized` — остановка.
+  Раньше цикл при ошибке крутился без паузы. Не-библиотечные ошибки (например,
+  `ValidationError` от неразобранного апдейта) не глотаются: повтор не помог бы,
+  апдейт остался бы тем же.
+- **Ошибка в хендлере не роняет бота**: её ловит диспетчер, см. «Ошибки хендлеров».
+  Раньше первый же `raise` в хендлере (в том числе сетевая ошибка при ответе)
+  завершал `polling()`.
+- **`Bot.close_session()`** вызывается в `finally` у `polling()` (без него
+  «Unclosed client session»). Имя не `close`: это метод Bot API (`close`), он
+  выводит бота с облачного сервера.
+- Диагностика — через `logging` (`selfrot.*`, уровень WARNING), не `print`.
+
+Ещё нет: повтор загрузки больших файлов.
+
+### Ошибки хендлеров: `on_error` (`handlers/base.py`, `router/base.py`, `dispatcher.py`)
+
+Исключения своих классов служат ответом пользователю. Сервис делает
+`raise UserError("текст")`, а показывает его хендлер или диспетчер. Пример:
+`examples/errors_bot.py`.
+
+```python
+class Rename(MessageHandler[...]):
+    async def pre_handle(self): self.name = validate_name(...)   # raise UserError
+    async def on_error(self, exc: Exception):
+        if isinstance(exc, NotEnoughMoney): await self.ctx.reply_message(...); return
+        raise exc                                                # не моё — выше
+
+class Root(BaseDispatcher[...]):
+    async def on_error(self, ctx, exc: Exception):
+        if isinstance(exc, UserError): await ctx.reply_message(exc.message); return
+        await super().on_error(ctx, exc)                         # лог
+```
+
+- **Цепочка из двух уровней:** `Handler.on_error(exc)` → `Dispatcher.on_error(ctx, exc)`.
+  Контракт как у `except`: вернулся нормально — обработано; `raise exc` (так по
+  умолчанию у хендлера) — идёт выше. У диспетчера по умолчанию лог. Роутерного
+  уровня нет: это был бы роутер ошибок aiogram, для которого нет сценария;
+  разная реакция выбирается `isinstance` внутри метода.
+- **Порядок:** ошибка проходит сквозь мидлвари (`post_handle(exc)` откатывает
+  сессию БД), и только потом вызывается `on_error`. Поэтому в нём недоступно
+  `ctx.db`, а ответить пользователю (`ctx.reply_message`, вызов Bot API) можно.
+  `Handler.on_error` вызывается, если хендлер уже найден (ошибка в его
+  `pre_handle`/`handle` или в мидлвари вложенного роутера); иначе (упал фильтр
+  или мидлварь диспетчера) ошибка идёт сразу в диспетчер.
+- **Только `Exception`:** `CancelledError` и `KeyboardInterrupt` проходят насквозь,
+  `on_error` для них не вызывается (остановка бота — не ошибка хендлера).
+- **Свои ошибки отдельно от багов:** показывать пользователю `str(exc)` любого
+  исключения нельзя (уйдёт «relation users does not exist»). Нужен маркерный
+  класс (`UserError`) и `isinstance` на него. Библиотека такого класса не ставит:
+  что считать «ошибкой для пользователя», решает приложение.
+- **`pre_handle` — место для проверок:** упал → `handle` не вызывается, ошибка идёт
+  в `on_error`.
+- Если `on_error` (любого уровня) сам упал, диспетчер логирует это, бот живёт.
+- **Найденный баг, исправлен:** цикл `pre_handle` мидлварей стоял вне `try`; если он
+  падал у третьей мидлвари, у первых двух `post_handle` не вызывался (сессия БД не
+  закрывалась). Теперь `post_handle` вызывается у всех, чей `pre_handle` прошёл;
+  упавшая мидлварь в их число не входит. Известный остаток: если сам `post_handle`
+  бросит исключение, `post_handle` внешних мидлварей не вызовутся.
+- Проверено (`on_error` хендлера и диспетчера, `pre_handle` в хендлере, ошибка
+  в мидлвари вложенного роутера, упавший фильтр, упавший `on_error`, отмена).
+
+### Пакет и установка (`pyproject.toml`)
+
+Библиотека подключается **так же, как `ghoul-quiz-lib` в `chestor_bot`**: прямой ссылкой
+`"selfrotgram @ git+https://github.com/SelfTopic/selfrotgram.git"` в
+`[project].dependencies`; Poetry записывает коммит в `poetry.lock`
+(`type = "git"`, `resolved_reference`).
+
+- **Сборка как у их библиотеки:** `poetry-core>=2.0.0,<3.0.0`, метаданные PEP 621 в
+  `[project]`, `[tool.poetry] packages = [{include = "selfrot"}]`. Дистрибутив
+  `selfrotgram`, импорт `selfrot`. `py.typed` в пакете, поэтому Pylance у потребителя
+  видит типы (фильтры сужают `self.ctx.message.text` до `str`).
+- **Python 3.11+**, а не 3.12: боевой `Dockerfile` бота это `python:3.11-slim`, и
+  `requires-python = ">=3.11,<3.15"` у самого бота. Первая версия `pyproject` требовала
+  3.12 и не поставилась бы. Проверено на 3.11.0.
+- **Зависимости:** `aiohttp>=3.12`, `pydantic>=2.11`, `typing_extensions>=4.14`. Границы
+  выбраны по версиям из `poetry.lock` бота (aiohttp 3.12.15, pydantic 2.11.7,
+  typing-extensions 4.14.1; у бота `aiohttp<3.13`, а `aiogram 3.31` требует
+  `pydantic<2.14`), поэтому обе библиотеки живут в одном окружении. Только эти три:
+  SQLAlchemy и остальное нужны примерам, а не библиотеке.
+- **Побочные эффекты убраны:** `Bot("токен")` раньше при каждом создании писал
+  `bot_cfg.cfg` в текущую папку потребителя. Теперь файл читается только при
+  `Bot()` без токена. Токен проверяется по формату (`123456:ABC...`), заглушка
+  `YOUR_BOT_TOKEN` из старого конфига даёт `ConfigError`, а не `ValueError` из `int()`.
+- **Что проверено:** сборка из git-копии, `poetry lock` и `poetry install` в
+  отдельном проекте (Python 3.11), импорт из установленного пакета, все проверки
+  под Python 3.11.0 с зафиксированными у бота `pydantic 2.11.7`,
+  `aiohttp 3.12.15`, `typing_extensions 4.14.1`.
+- **Не сделано:** тег версии (`v0.1.0`), лицензия (в репозитории нет `LICENSE`).
+  В истории репозитория лежит случайный 12-МБ файл `logging` (PostScript от ImageMagick,
+  коммит `b403dbc`): он замедляет клонирование при установке, из истории убирается
+  только переписыванием.
+
+### Мидлвари уровня апдейта (`dp.update.middleware` у `chestor_bot`)
+
+В `__main__` прода четыре: `Logging` → `Database` → `SyncEntities` → `Ban` (первая
+снаружи). Плюс по одной на роутер: `Ghoul`, `Creator`, `Moderator`, `RpCommands`.
+Проверено прототипом на нашем API (фейковые сессии, реальный Bot API-сервер-заглушка):
+
+| Что делает у прода | У нас |
+|---|---|
+| `dp.update.middleware` работает на каждый апдейт, даже без найденного хендлера | мидлвари диспетчера (внешние), проверено |
+| обёртка `await handler(...)`, можно не вызвать (бан, `Ghoul`, `Creator`) | `pre_handle() -> bool`: `False` — хендлер не вызывается; ответить пользователю можно тут же (`ctx.answer_message`, `ctx.answer_callback_query(show_alert=True)`) |
+| `DatabaseMiddleware`: `try: handler; commit; except: rollback; finally: reset` | `pre_handle` открывает, `post_handle(exc)` коммитит при `exc is None`, иначе откатывает |
+| `Logging`: время вокруг всей цепочки | `pre_handle`/`post_handle` самой внешней мидлвари |
+| `SyncEntities` в своей сессии с коммитом до хендлера | `pre_handle`, `post_handle` пустой |
+| `Ban`: вытаскивает пользователя из `Update` цепочкой `isinstance` | `self.ctx.user` для любого вида апдейта |
+| `router.message.middleware` + `router.callback_query.middleware` | одна мидлварь роутера на всё поддерево (любой вид), ограничение по виду — в самой мидлвари |
+
+- **Найден и исправлен баг, ломавший прод-схему с `ContextVar`.** `pre_handle` и
+  `post_handle` запускались через `asyncio.create_task`, то есть в дочерней задаче:
+  значение `session_context.set(session)` не доходило до хендлера, а
+  `session_context.reset(token)` падал (`token was created in a different Context`).
+  На этом держится весь DI прода (`db_session = Factory(lambda: session_context.get())`).
+  Теперь `pre_handle`, `handle` и `post_handle` идут в одной задаче; параллельные
+  апдейты не путают значения (у каждой задачи свой контекст, проверено).
+- **Исправлен `LoggingMiddleware`:** «мс» были секундами (`int(time.time() - start)`
+  без `* 1000`), время считалось `time.time()` вместо `monotonic()`; добавлен
+  пользователь.
+- **Открыто: типизированные данные из мидлвари в хендлер.** У прода это один случай на
+  весь бот (`data["rp_commands"]` в `RpCommandsMiddleware`). Пока для такого хватает
+  `ContextVar` (как `session_context`); отдельный механизм «мидлварь гарантирует поля
+  ctx» (по аналогии с `guarantees` у фильтров) не делаем, пока случаев мало.
+- **Решено: порядок по чату против долгих хендлеров.** Docstring `SyncEntities` у
+  прода описывает боль от долгих хендлеров (нарезка видео в `anime_router`, десятки
+  секунд), а aiogram обрабатывает апдейты одного чата параллельно. Поэтому у нас
+  порядка по умолчанию нет (`ordering_key` возвращает `None`), включается явно, см.
+  «Параллельная обработка». Поведение порта совпадает с продом.
+
+### Методы на объектах: `message.answer()`, `callback.answer()` (генерируются)
+
+Решено: у `Message`, `CallbackQuery`, `InlineQuery`, `ShippingQuery`,
+`PreCheckoutQuery`, `ChatMemberUpdated` есть методы, как у aiogram. Пример из порта:
+
+```python
+processing = await msg.reply("⏳ Начинаю нарезку")
+await processing.edit_text("почти готово")
+await processing.delete()
+await ctx.callback_query.answer("готово", show_alert=True)
+await ctx.chat_member.answer("Добро пожаловать!")
+```
+
+- **Как объект знает бота.** `Bot.call` и вебхук разбирают ответ с контекстом
+  валидации `{"bot": bot}`; базовая модель `_Base.model_post_init` кладёт бота в
+  приватный атрибут, включая вложенные (`reply_to_message`, `callback.message`).
+  Объект, созданный вручную (`Update(...)` в тесте), к боту не привязан: метод даёт
+  `BotNotBoundError` с пояснением. Приватный атрибут входит в `==`, поэтому
+  привязанное и непривязанное сообщение с одинаковыми полями не равны.
+- **Генерация из спеки** (`bound_methods` в генераторе, тот же принцип, что у
+  ярлыков контекста): методы `send*` дают `answer`/`answer_photo` и
+  `reply`/`reply_photo` на `Message` и `answer*` на `ChatMemberUpdated`; методы с
+  `chat_id` + `message_id` — `edit_text`, `edit_caption`, `edit_media`,
+  `edit_reply_markup`, `delete`, `pin`, `unpin`, `stop_poll`, `set_reaction`, ...;
+  `forward(chat_id)` и `copy_to(chat_id)`; `answer*Query` — `answer` на
+  `CallbackQuery`/`InlineQuery`/`ShippingQuery`/`PreCheckoutQuery`. Имя строится
+  из имени метода без `_message`/`_chat_message` (`delete_message` → `delete`), а
+  конфликты с полями и друг с другом генератор ловит на этапе генерации.
+- `answer` берёт чат сообщения и переносит `business_connection_id` и тему форума,
+  `reply` ещё и цитирует сообщение (как `ctx.answer_message`/`reply_message`).
+  `edit_*`, `delete`, `pin` правят именно это сообщение; чужое — через `ctx` или бота.
+- Всё идёт через `Bot.call`, поэтому `Bot.defaults` и повтор при 429 действуют.
+- **Основное поле — позиционное**, хотя в спеке оно необязательное (текст или
+  `rich_message`): `edit_text("...")`, `edit_caption("...")`, `callback.answer("...")`,
+  так же у `ctx.edit_message_text` и `ctx.answer_callback_query`.
+- Суженные типы (`TextMessage`) наследуют методы. Стоимость: `generated.py` вырос с
+  6 тыс. до 10 тыс. строк, время импорта прежнее.
+
+### Инлайн-клавиатуры и данные кнопок (`keyboard.py`, `callback_data.py`)
+
+У `chestor_bot` клавиатуры собираются вручную (`InlineKeyboardMarkup`), а
+`callback_data` упаковывается строкой и разбирается руками в пяти местах
+(`duel:<id>:<action>:<uid>`, `quiz_answer_<id>_<option>`, `<prefix><count>_<current>_<view>`
+и т. д.), плюс `parse_duel_callback_payload` с `VALID_ACTIONS`. Это рутина, которую
+берёт на себя библиотека. Пример: `examples/keyboards_bot.py`.
+
+```python
+class Duel(CallbackPayload, prefix="duel"):
+    duel_id: int
+    action: Literal["consent_target", "fora_serious"]
+    expected_id: int
+
+kb = InlineKeyboard(width=2).button("Принять", Duel(duel_id=1, action="consent_target", expected_id=5))
+await msg.reply("Вызов!", reply_markup=kb.markup())      # callback_data == "duel:1:consent_target:5"
+
+class Consent(CallbackQueryHandler[AppContext[DataCallbackQuery]]):
+    duel = Duel.filter(action="consent_target")
+    query = duel
+    async def handle(self):
+        data = self.duel.parse(self.ctx)                 # Duel: duel_id уже int
+```
+
+- **`CallbackPayload`** (pydantic-модель, `prefix=` обязателен, `sep=":"` по умолчанию):
+  поля упаковываются в порядке объявления. Допустимы `str`, `int`, `bool`, `Enum`,
+  `Literal`, `Optional` (`None` — пустое поле). `pack()` / `unpack()` / `try_unpack()`.
+  Разбор проверяет префикс, число и типы полей (`Literal` заменяет `VALID_ACTIONS`).
+- **Лимиты Telegram проверяются заранее**, а не ответом 400 при отправке:
+  `callback_data` до 64 **байт** (кириллица — 2 байта; `CallbackDataError` с размером),
+  разделитель внутри значения, ровно один вид кнопки, до 8 кнопок в ряду и 100 всего.
+- **`Payload.filter(**equals)`** — фильтр по данным кнопки (гарантирует
+  `DataCallbackQuery`); поля-условия проверяются при создании (опечатка → `DefinitionError`).
+  Комбинируется как остальные: `Duel.filter(action="a") | Duel.filter(action="b")`.
+  Разобранный объект в фильтре не хранится (он общий для апдейтов): `parse(ctx)` в
+  хендлере, как `TextRegexp.match(ctx)`. Pyright выводит тип `Duel`.
+- **`InlineKeyboard(width=N)`**: `button()` кладёт кнопки по `N` в ряд (замена
+  `builder.adjust(N)`), `row(*buttons)` — отдельный ряд, `markup()` отдаёт
+  `InlineKeyboardMarkup`. `button(text, data | Payload, url=..., **fields)` принимает
+  и остальные поля (`web_app=`, `style="success"`), опечатки в именах — `KeyboardError`.
+  Пустая клавиатура допустима (убирает кнопки у сообщения).
+- **Проверка «нажал тот, для кого кнопка»: `.pressed_by("поле")`.** В группе кнопку
+  видят все, а нажать может только тот, чей id зашит в payload (`expected_id`,
+  `invoker_id`). Фильтр пропускает только нажатие владельца; чужое не совпадает, поэтому
+  следующим по списку хендлером его ловят и отвечают (первый подошедший хендлер
+  забирает апдейт):
+
+  ```python
+  class Consent(CallbackQueryHandler[...]):
+      duel = Duel.filter(action="accept").pressed_by("expected_id")
+      query = duel
+      async def handle(self): data = self.duel.parse(self.ctx); ...
+
+  class NotForYou(CallbackQueryHandler[...]):          # ниже по списку handlers
+      query = Duel.filter(action="accept")
+      async def handle(self): await self.ctx.callback_query.answer("Не для тебя", show_alert=True)
+  ```
+
+  Без второго хендлера чужое нажатие останется без ответа (у кнопки крутится
+  индикатор), поэтому проверка не молчаливая по умолчанию, а явная. Возвращает
+  копию, исходный фильтр не меняется; поле проверяется при создании.
+- **`FromUser(*ids)` (`filter/user.py`)** — общий фильтр по отправителю: автор
+  сообщения, нажавший кнопку, участник, чей статус изменился (то, что `ctx.user`
+  отдаёт для любого вида апдейта). Подходит любому виду обработчика, у события без
+  пользователя (пост канала) не совпадает: `FromUser(*ADMIN_IDS) & Command("ban")`,
+  `~FromUser(*BANNED)`. Заменяет `CreatorMiddleware` там, где нужна не блокировка
+  всего роутера, а условие на один хендлер.
+- Нет reply-клавиатур (`ReplyKeyboardMarkup`): в `chestor_bot` они не используются.
+- **Найденная ошибка, исправлена в генераторе:** `CallbackQuery.message` — это
+  `MaybeInaccessibleMessage`, а у `InaccessibleMessage` те же поля, что у `Message`,
+  поэтому разбор *всегда* возвращал `Message`, и `isinstance(msg, Message)` не
+  отличал недоступное сообщение (старше 48 часов) от обычного. Теперь дискриминатор
+  `date == 0`. Правка сообщения под кнопкой без `isinstance` уже есть:
+  `ctx.edit_message_text("...", reply_markup=...)` берёт чат и id из апдейта и
+  работает даже для недоступного сообщения.
+
+### Фильтры статуса участника (`filter/member.py`)
+
+`chat_member` и `my_chat_member` приходят как `ChatMemberUpdated` с
+`old_chat_member` и `new_chat_member`; у каждого `status`: `creator`,
+`administrator`, `member`, `restricted`, `left`, `kicked`. Сами по себе они не
+говорят «вошёл» или «вышел», надо сравнить до и после.
+
+- `MemberJoined()` — раньше не в чате, теперь в чате (вошёл, добавлен, заявка
+  одобрена); `MemberLeft()` — наоборот (вышел, удалён, **заблокирован**). Это
+  `JOIN_TRANSITION` и `LEAVE_TRANSITION` из aiogram.
+- «В чате» = `creator`/`administrator`/`member`, а у `restricted` решает поле
+  `is_member`: ограниченный участник может как остаться в чате (заглушили), так и
+  быть вне его. Вошёл и сразу ограничен — это вход, заглушили уже вошедшего — нет.
+- `ChatMemberTransition(before=..., after=...)` — переход между конкретными
+  статусами (строка, множество или `None` = любой): повышение
+  (`before="member", after="administrator"`), бан (`after="kicked"`). Опечатка в
+  названии статуса даёт `DefinitionError` при создании фильтра.
+- Работают и в `MyChatMemberHandler` (статус самого бота), и в `ChatMemberHandler`
+  (других), потому что читают `ctx.event`. В `MessageHandler` их поставить нельзя:
+  заголовок сверяется при создании класса (`DefinitionError`). Пример:
+  `examples/chat_members.py` (порт `chat_member_update_routers`).
+
+### Значения по умолчанию: `BotDefaults` (`client/defaults.py`)
+
+Аналог `DefaultBotProperties` из aiogram. В `chestor_bot` реально нужен один
+параметр, `link_preview_is_disabled=True`, а `parse_mode="HTML"` там передаётся
+вручную в 17 местах.
+
+```python
+class MyBot(Bot):
+    defaults = BotDefaults(
+        parse_mode="HTML",
+        link_preview_options=LinkPreviewOptions(is_disabled=True),
+    )
+```
+
+- **Явно и типизированно:** атрибут класса `Bot` (как таймауты и `proxy`), поля
+  `parse_mode`, `link_preview_options`, `disable_notification`, `protect_content`,
+  `show_caption_above_media`. Вместо плоских `link_preview_is_disabled`,
+  `link_preview_prefer_small_media`... из aiogram — сам объект `LinkPreviewOptions`,
+  без пересборки.
+- **Подстановка в `Bot.call`, до сериализации:** в поле, которое вызов оставил
+  `None`, кладётся умолчание. Работает и для ярлыков (`ctx.answer_message`), и для
+  прямых вызовов. Исходный метод не меняется (копия).
+- **Вложенное тоже:** `InputMedia*` в `send_media_group`, `InputTextMessageContent` в
+  результатах `answer_inline_query` (по имени поля, рекурсивно по спискам, моделям и
+  методам-датаклассам). Иначе `parse_mode="HTML"` не действовал бы на подписи
+  альбома.
+- **Явное сильнее умолчания:** `link_preview_options` заменяется целиком, а
+  `disable_notification=False` перекрывает `True`.
+- **Ограничение: `parse_mode` на один вызов не отключить.** Значения «без разметки»
+  у Telegram нет (а отличить «не задано» от «нет» без sentinel в сигнатурах всех
+  185 методов нельзя). Для такого вызова текст экранируют. Если `parse_mode` по
+  умолчанию задан, а в тексте сырой `<`, будет `400 can't parse entities` (как и в
+  aiogram). Не покрыто: `text_parse_mode`, `quote_parse_mode`,
+  `allow_sending_without_reply` (у них другие имена/семантика).
+- **Найденное попутно, исправлено в генераторе:** у входных типов `InputMedia*`,
+  `InlineQueryResult*`, `RichText*` поле `type` было обязательным `str`, и
+  `InputMediaPhoto(media="id")` не создавался без `type="photo"`. Причина: в
+  описании «must be photo» без кавычек, а у `InlineQueryResultPhoto` и `…CachedPhoto`
+  одинаковое значение, из-за чего дискриминатор объединения не собирался. Теперь
+  единственное значение — `Literal["photo"]` с умолчанием у каждого типа отдельно
+  (175 полей вместо 92), независимо от дискриминатора объединения.
+
+### Вебхуки и жизненный цикл (`dispatcher/webhook.py`, `dispatcher.py`)
+
+Сделано под реальный `chestor_bot`: прод на VPS, aiohttp за nginx (порт 8999,
+`127.0.0.1` наружу), в `__main__` те же воркеры (`video_worker`, `notification_ticker`)
+и один код для DEV (поллинг) и PROD (вебхук). Пример: `examples/webhook_bot.py`.
+
+```python
+dp.start_webhook(url="https://chestor.site/webhook/x", secret_token=..., host="0.0.0.0", port=8999)
+dp.start_polling()
+```
+
+- **Общий вход `feed_update(update)`** (ждёт слот) и `try_feed_update(update) -> bool`
+  (не ждёт). Поллинг и вебхук отдают апдейты туда, а `UpdateRunner` создаётся в
+  `__init__`. `feed_update` можно звать и из своего FastAPI/aiohttp-приложения.
+- **`on_startup()` / `on_shutdown()`** — методы диспетчера (как `on_error`,
+  `ordering_key`), а не регистрации. Старт: `getMe` (токен проверен) →
+  `on_startup` → приём. Стоп: перестать принимать → дождаться хендлеров
+  (`drain`) → `on_shutdown` → закрыть сессию. `on_shutdown` зовётся, если
+  `on_startup` был начат, даже если упал: останавливать нужно то, что могло и не
+  запуститься. Аналог `dp.startup`/`try…finally` в `__main__` прода.
+- **Сервер (`WebhookApp`) поверх `aiohttp.web`, без новых зависимостей.** Путь
+  берётся из `url`. TLS терминирует прокси, сервер слушает обычный HTTP
+  (`host="127.0.0.1"` по умолчанию; в контейнере нужен `"0.0.0.0"`).
+  `access_log=None`: в строке запроса лежит путь, а у прода в нём токен бота.
+- **`secret_token` обязателен** (`[A-Za-z0-9_-]{1,256}`, иначе `ConfigError`),
+  сравнение через `hmac.compare_digest` (не-ASCII в заголовке — 403, а не 500). У
+  прода секретом служит путь `/webhook/<BOT_TOKEN>`, то есть токен бота попадает в
+  логи nginx и в `logs.log`. Заголовок секрета это исправляет: при переносе путь
+  можно сделать любым.
+- **Ответы:** 403 (секрет), 400 (не JSON или не `Update`), 404/405 (путь/метод), 200,
+  503 + `Retry-After` (очередь переполнена: Telegram повторит; апдейт при этом не
+  запоминается принятым). 200 отдаётся сразу после постановки в очередь, а не
+  после обработки, иначе долгий хендлер выглядел бы для Telegram провалом.
+- **Дедупликация по `update_id`** (последние 1000): Telegram повторяет доставку при
+  сбое, а у `getUpdates` есть `offset`, у вебхука его нет.
+- **Если порядок включён явно, при вебхуке он слабее, чем при поллинге.** Telegram шлёт
+  до `max_connections` (по умолчанию 40) запросов параллельно, апдейты одного чата
+  могут прийти по разным соединениям в другом порядке; `ordering_key` сохраняет только
+  порядок прибытия. Строгий порядок — `max_connections=1` (ценой пропускной
+  способности). Повтор после 503 тоже может прийти позже следующего апдейта чата.
+- **`start_polling` / `start_webhook` ловят SIGINT и SIGTERM:** сигнал отменяет главную
+  задачу, а её `finally` (drain, `on_shutdown`, сессия) отрабатывает штатно. Раньше
+  `docker stop` (SIGTERM) убивал процесс посреди хендлеров. Второй сигнал во время
+  остановки прерывает её.
+- **`setWebhook` после запуска сервера**: `allowed_updates` считается из дерева
+  роутеров (у прода он записан вручную), `drop_pending_updates` и `max_connections`
+  — параметры. Вебхук при остановке не снимается: апдейты за время рестарта
+  Telegram хранит и доставит (прод при старте сбрасывает их через
+  `drop_pending_updates`).
+- **Поллинг при установленном вебхуке**: `getUpdates` отвечает 409, поллинг
+  повторяет с паузой. Библиотека вебхук сама не снимает: это делает приложение в
+  `on_startup` (`await self.api.delete_webhook(...)`), как `main` прода в DEV.
+- **Прокси**: `Bot.proxy = "http://host:port"` (у прода `AiohttpSession(proxy=...)`),
+  адрес прокси из текста ошибок вырезается.
+- Проверено на локальном фейк-сервере Telegram и настоящем сервере вебхука: 403/400/
+  404/405/200, дедупликация, 503 и повтор после него, порядок старта (сервер слушает
+  до `setWebhook`), остановка (хендлер доработал до `on_shutdown`, порт свободен),
+  SIGTERM. С настоящим Telegram не проверялось (нужен публичный HTTPS).
+- **Не покрыто, а `chestor_bot` это использует:** настройки по умолчанию для бота
+  (`DefaultBotProperties(link_preview_is_disabled=True)`): у нас каждый вызов
+  сам задаёт `link_preview_options`/`parse_mode`; `dp.update.middleware` (мидлвари
+  на весь апдейт, у нас диспетчерские); DI-контейнер и `wire`.
+
+### Параллельная обработка (`dispatcher/runner.py`, `dispatcher.py`)
+
+Раньше `polling()` делал `await create_task(...)` на каждый апдейт, то есть шёл
+по очереди: один медленный хендлер (БД, внешний API) задерживал весь бот. Теперь
+апдейты идут параллельно, но не как попало.
+
+- **По умолчанию порядка нет: каждый апдейт независим, как в aiogram.** Метод
+  `ordering_key(ctx)` возвращает `None`. Порядок включается явно: апдейты с одним
+  ключом идут строго друг за другом, с разными — параллельно.
+
+  ```python
+  class Root(BaseDispatcher[...]):
+      def ordering_key(self, ctx):
+          return order_by_chat(ctx)      # или order_by_user(ctx), или свой ключ
+  ```
+
+  Готовые ключи: `order_by_chat` (id чата, без чата — пользователь) и
+  `order_by_user`. **Почему не наоборот** (сначала стоял порядок по чату): он даёт
+  head-of-line blocking. Долгий хендлер (`/anime` у `chestor_bot` ждёт ffmpeg до 60 с)
+  задерживает все остальные апдейты чата, в группе — всех участников, а защита
+  `_active_cut_users` («у тебя уже есть нарезка»), рассчитанная на параллельность,
+  молча перестаёт работать. «Бот завис» заметнее и хуже редкой гонки; гонки за важные
+  данные (баланс) у прода закрыты на уровне приложения (тесты `race_condition`),
+  а за несущественные (имя пользователя) — не проблема. Порядок нужен там, где хендлеры
+  быстрые, а последовательность значима (диалоги, FSM).
+- **Лимит одновременных: `max_concurrent_updates = 100`.** Когда все слоты заняты,
+  `polling()` перестаёт забирать апдейты (Telegram их хранит), поэтому задачи не
+  копятся без границы. `1` — прежнее поведение, строго по очереди.
+- **Остановка (`shutdown_timeout = 10` с):** начатым хендлерам дают закончить,
+  оставшихся отменяют, и их `post_handle(exc)` получает `CancelledError` (сессия БД
+  откатывается, а не течёт).
+- Ошибка одного хендлера логируется и не задевает остальных; слот при этом
+  освобождается. Упавший апдейт не блокирует следующие того же чата.
+- Планировщик — отдельный `UpdateRunner`: ссылки на задачи хранит сам (иначе
+  сборщик мусора может убить задачу в середине хендлера), ошибок хендлеров не
+  обрабатывает.
+- **Гарантия доставки — «не более одного раза»**: `offset` двигается сразу при
+  получении, до обработки. Если процесс убить, необработанные апдейты в работе
+  потеряются (раньше окно было в один апдейт, теперь до `max_concurrent_updates`).
+  Для RPG-бота, где апдейт — действие игрока, это стоит помнить при деплое: остановка
+  по Ctrl+C/SIGINT дожидается хендлеров, `kill -9` — нет.
+- Что это требует от кода пользователя: всё, что живёт на уровне диспетчера
+  (сервисы, кеши), должно быть безопасно при параллельном доступе; данные апдейта
+  живут в `ctx`, а хендлер и мидлвари создаются заново на каждый апдейт.
+- Проверено: юнит-тесты `UpdateRunner` (параллельность, порядок ключа, лимит и
+  backpressure, освобождение слотов после ошибок, drain, отмена ожидающего) и
+  сквозной поллинг на локальном фейк-сервере (порядок в чате, параллельность
+  чатов, `max_concurrent_updates = 1`, `ordering_key → None`, остановка с
+  зависшим хендлером).
+
+### 4. Клавиатуры и медиа
+
+- `InlineKeyboardMarkup`/`ReplyKeyboardMarkup` как билдеры (аналог
+  `InlineKeyboardBuilder` из aiogram), не голые dict.
+- `sendPhoto`/`sendVideo`/`sendDocument`/`editMessage*`/
+  `answerCallbackQuery` — реализовать по мере необходимости, не всё
+  Bot API сразу.
+
+### 5. Диспетчер / поллинг
+
+- Баги диспетчера (пп. 1-3, 5 аудита) — **исправлены**, см. выше.
+- Апдейт забирает первый подошедший хендлер (по порядку в `handlers`), дальше
+  диспетчер не идёт. Поэтому запасной хендлер без `args_count` можно ставить
+  ниже точного. Сквозные вещи (подсчёт, логи) — в мидлварях, не в хендлерах.
+- Контекст апдейта больше не хранится в `self.ctx` диспетчера: он создаётся
+  в `polling()` и передаётся параметром (`propagate(ctx)`). Диспетчер держит только app-lifetime сервисы, так
+  что параллельная обработка апдейтов не затрёт чужой контекст (см. «Параллельная обработка»).
+- Long polling и переживание сбоев сети реализованы, см. «Сеть».
+
+### Вне ядра библиотеки (сознательно)
+
+- DI-контейнер, работа с БД — это ответственность конкретного бота
+  (как в `chestor_bot` через `dependency-injector`+SQLAlchemy), библиотека
+  не должна на это завязываться.
+- Webhook-режим — возможно later, не блокер для переноса `chestor_bot`
+  (он и сейчас, вероятно, на поллинге или его несложно оставить так).
+
+## Открытые вопросы
+
+Требуют решения до реализации соответствующей части — фиксировать здесь
+по мере ответов:
+
+- [x] Синтаксис фильтров: принцип решён — **никакого magic** (это
+      касается и `F`-подобных прокси-объектов из aiogram, и
+      magic-прокидывания данных из middleware в хендлер через kwargs;
+      именно вторую проблему в aiogram и решает явный `Context`, и
+      фильтры не должны заводить новый magic взамен старого). Ориентир —
+      фильтры grammY, но не копия, а попытка сделать лучше. Решено: классы
+      с `check()` + комбинаторы `&`/`|`/`~` (см. «Комбинаторы фильтров»).
+      Не решено: фильтры с параметрами из БД/состояния (FSM).
+- [x] Router — регистрация: атрибуты класса, `register_router`,
+      `register_routers()`, `auto_connect` (см. «Router» выше).
+- [ ] FSM — обязательная часть ядра или отдельный опциональный модуль? У
+      `chestor_bot` она в двух файлах (`transfer_router`, `quiz`): решать при порте
+      этих файлов, а не заранее.
+- [x] Вебхуки нужны: прод на них (VPS), см. «Вебхуки и жизненный цикл».
+- [x] Ошибки в хендлерах: `on_error` на хендлере и диспетчере, см. «Ошибки хендлеров».
+
+## Статус порта `chestor_bot`
+
+Сверка по импортам aiogram в `src` (197 файлов) и по реальным выражениям.
+
+**Покрыто библиотекой:**
+
+| У прода | У нас |
+|---|---|
+| `Message`, `CallbackQuery`, `Router`, `Bot`, `Update` | типы, роутеры, `Bot` |
+| `Command`, `CommandObject`, `CommandStart`, `or_f` | `Command` (+`parse`), `\|` |
+| `F.text.lower() == "бот"` (14) | `Text("бот", ignore_case=True)` |
+| `F.text.regexp(...)` (4), `F.data.startswith("duel:")` | `TextRegexp`, `CallbackDataStartswith` |
+| свой `Filter` (4), `BaseMiddleware` (8) | `BaseFilter`, `BaseMiddleware` (`pre_handle`/`post_handle`) |
+| `dp.update.middleware`, `router.message.middleware` | мидлвари диспетчера и роутера |
+| `TelegramAPIError`/`BadRequest`/`Forbidden` | те же имена без `Error` (`TelegramForbidden`) |
+| `router.errors()` / `ErrorEvent` | `on_error` |
+| `DefaultBotProperties`, `AiohttpSession(proxy=)` | `Bot.defaults`, `Bot.proxy` |
+| `SimpleRequestHandler`, `setup_application`, `dp.startup` | `start_webhook`, `on_startup`/`on_shutdown` |
+| `FSInputFile`, `BufferedInputFile` | `InputFile.from_path`, `InputFile(bytes)` |
+| `InputRichMessage` и блоки (5 файлов) | сгенерированы из спеки (Bot API 10.3) |
+| `message.answer/reply/reply_video/reply_animation` (35) | `ctx.answer_message`, `ctx.reply_animation`, ... |
+
+**Не покрыто, в порядке важности:**
+
+1. ~~`ChatMemberUpdatedFilter(JOIN/LEAVE_TRANSITION)`~~ — сделано: `MemberJoined`,
+   `MemberLeft`, `ChatMemberTransition`.
+2. ~~Методы на самих сообщениях~~ — сделано: `sent.edit_text()`, `sent.delete()`,
+   `callback.answer()`, `event.answer()` и остальные.
+3. **FSM** (2 файла). ~~`InlineKeyboardBuilder`~~ — сделано: `InlineKeyboard` и `CallbackPayload`.
+4. **Тесты**: у `chestor_bot` pytest с `race_condition`; у библиотеки нет утилиты для
+   прогона `Update` через диспетчер с фейковым `Bot` (все проверки этой сессии
+   делались скриптами со скрытым фейк-сервером).
+5. Не проверялось с настоящим Telegram: вебхуки (нужен публичный HTTPS), `getUpdates`
+   long polling под нагрузкой, `Bot.defaults` на живом API.
+
+**Исправлено при этой сверке:** `ctx.edit_message_text(text=..., message_id=...)`
+слал запрос без `chat_id` (когда задан только `message_id`); теперь чат берётся из
+апдейта. Проверены все способы адресации: только `message_id`, сообщение апдейта,
+всё явно, `inline_message_id`, callback из inline-сообщения.
+
+## Roadmap
+
+1. ~~Пофиксить баги диспетчера~~ — готово.
+2. ~~Router + Filters~~ — готово.
+3. ~~Типизация Context по типу апдейта~~ — готово.
+4. FSM — по мере порта (2 файла).
+5. ~~Клавиатуры, `CallbackQuery`/`InlineQuery` handlers, ответы на них~~ — типы и
+   методы сгенерированы; нет `InlineKeyboardBuilder`.
+6. ~~Медиа-методы~~ — сгенерированы; `attach://` для альбомов не нужен `chestor_bot`.
+7. ~~Ревизия pydantic-моделей~~ — типы сгенерированы из спеки.
+8. ~~Фильтры переходов `ChatMember` (JOIN/LEAVE)~~ — готово.
+9. Черновой перенос простого куска `chestor_bot` (например, один роутер) как проверка
+   архитектуры на реальном коде — **следующий шаг**.

@@ -1,0 +1,36 @@
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[project]
+name = "selfrotgram"
+version = "0.1.0"
+description = "Async Python library for Telegram Bot API: types and methods generated from the spec, filters, routers, webhooks"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    {name = "CheStor", email = "selftopic@gmail.com"}
+]
+keywords = ["async", "telegram", "bot", "api"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "aiohttp>=3.12",
+    "pydantic>=2.11",
+    "typing_extensions>=4.14",
+]
+
+[project.urls]
+Repository = "https://github.com/SelfTopic/selfrotgram"
+
+# Ставится как selfrotgram, импортируется как selfrot (py.typed внутри пакета).
+[tool.poetry]
+packages = [{include = "selfrot"}]

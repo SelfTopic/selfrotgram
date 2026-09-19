@@ -17,5 +17,4 @@ class ConfigAPI:
 
     def get_token(self, key: str = 'bot_token') -> Optional[str]:
         token = self.parser.get(key=key)
-        print(token)
         return token

@@ -1,3 +1,2 @@
-from .base import TelegramAPIMethod
-from .send_message import SendMessage
-from .get_updates import GetUpdates
+from .base import TelegramMethod as TelegramMethod
+from .generated import *  # noqa: F403

@@ -4,7 +4,7 @@ import os
 
 class CfgParser:
 
-    path: str = None
+    path: str
     parser: configparser.ConfigParser
 
     def __init__(self, path_cfg: str = 'bot_cfg.cfg'):

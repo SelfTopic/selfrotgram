@@ -1,59 +1,115 @@
-from ..methods import TelegramAPIMethod, SendMessage, GetUpdates
-from .session import AsyncSession
+import asyncio
+import logging
+import re
+from typing import Any, TypeVar
+
+from pydantic import TypeAdapter
+
 from ..config import ConfigAPI
-from typing import Optional 
-from ..types import Update 
+from ..exceptions import ConfigError, TelegramAPIError, TelegramRetryAfter
+from ..methods.base import TelegramMethod
+from .defaults import BotDefaults
+from .methods import BotMethods
+from .session import AsyncSession
+
+T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
+
+_TOKEN = re.compile(r"\d+:[A-Za-z0-9_-]+")
+
+_adapters: dict[Any, TypeAdapter[Any]] = {}
 
 
-class Bot:
+def _adapter(returning: Any) -> TypeAdapter[Any]:
+    try:
+        adapter = _adapters.get(returning)
+    except TypeError:  # тип нельзя хешировать — строим без кеша
+        return TypeAdapter(returning)
+
+    if adapter is None:
+        adapter = _adapters[returning] = TypeAdapter(returning)
+
+    return adapter
+
+
+class Bot(BotMethods):
+    """Методы Bot API (send_message, get_me, ...) приходят из BotMethods."""
 
     session: AsyncSession
     token: str
-    
+
+    # Настройки транспорта: подкласс Bot переопределяет их атрибутом класса,
+    # потому что диспетчер создаёт бота сам (bot = MyBot).
+    request_timeout: float = 60.0  # на весь запрос; у getUpdates плюс его timeout
+    connect_timeout: float = 10.0  # на установку соединения: мёртвая сеть падает быстро
+    # 429: Telegram не выполнил запрос, поэтому подождать retry_after и повторить
+    # безопасно. Ждём не дольше flood_max_wait секунд, иначе ошибка уходит в код.
+    # flood_retries = 0 — не повторять вообще.
+    flood_retries: int = 3
+    flood_max_wait: float = 30.0
+    # Значения по умолчанию для аргументов методов (parse_mode, link_preview_options, ...)
+    defaults: BotDefaults = BotDefaults()
+    # Прокси для запросов к Telegram ("http://host:port"); None — напрямую.
+    proxy: str | None = None
+
     def __init__(
-        self, 
-        token: Optional[str] = None,
+        self,
+        token: str | None = None,
     ):
-        
-        self.token = token if token else "Unauthorized"
-        self.session = AsyncSession()
-        self.cfg = ConfigAPI()
-        self.id: int = 0
 
-        if self.token == "Unauthorized":
+        # Токен: аргумент, а если его нет вообще (None) — старый путь, файл
+        # bot_cfg.cfg в текущей папке (создаётся с заглушкой при первом запуске).
+        # Файл трогаем только на этом пути: Bot("токен") ничего не пишет на диск.
+        if token is None:
+            token = ConfigAPI().get_token()
 
-            token = self.cfg.get_token()
-            if not token:
-                raise Exception("Fill bot token in configure file")
-            
-            self.token = token
+        if not token or not _TOKEN.fullmatch(token):
+            raise ConfigError(
+                "Нужен токен бота вида 123456:ABC-DEF: передайте Bot(token=...) "
+                "или впишите bot_token в bot_cfg.cfg"
+            )
 
-        self.id = int(self.token.split(":")[0])
+        self.token = token
+        self.session = AsyncSession(
+            timeout=self.request_timeout,
+            connect_timeout=self.connect_timeout,
+            proxy=self.proxy,
+        )
+        self.username: str | None = None
+        self.id = int(token.split(":")[0])
 
-    async def get_updates(self, offset: int = 0):
-        method = GetUpdates(
-            offset=offset
+    async def call(self, method: TelegramMethod[T]) -> T:
+        method = self.defaults.apply(method)
+
+        retries = 0
+        while True:
+            response = await self.session(method=method, token=self.token)
+            if response.get("ok"):
+                break
+
+            error = TelegramAPIError.from_response(method.__api_method__, response)
+            if (
+                isinstance(error, TelegramRetryAfter)
+                and retries < self.flood_retries
+                and error.retry_after <= self.flood_max_wait
+            ):
+                retries += 1
+                logger.warning("%s: повтор через %s с (flood control)", error, error.retry_after)
+                await asyncio.sleep(error.retry_after)
+                continue
+
+            raise error
+
+        # context: объекты запоминают бота, поэтому message.answer() работает без ctx.
+        return _adapter(method.__returning__).validate_python(
+            response["result"], context={"bot": self}
         )
 
-        response = await self._get_request(method=method)
+    async def close_session(self) -> None:
+        """Закрыть HTTP-сессию. (`close` — это метод Bot API, а не он.)"""
+        await self.session.close()
 
-        updates = [Update(**u) for u in response.get("result", [])]
-        return updates
-
-    async def send_message(self, text: str, chat_id: int):
-        method = SendMessage(
-            text=text,
-            chat_id=chat_id    
-        )
-
-        response = await self._make_request(method=method)
-        return response
-
-    async def _make_request(self, method: TelegramAPIMethod):
-        return await self.session(method=method, token=self.token)
-    
-    async def _get_request(self, method: TelegramAPIMethod):
-        return await self.session.get(method=method, token=self.token)
-
-    
-  
+    async def load_me(self) -> None:
+        me = await self.get_me()
+        self.username = me.username

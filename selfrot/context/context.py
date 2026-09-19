@@ -1,29 +1,15 @@
-from typing import TypeVar, Optional
-from ..types import (
-    Update,
-    Message
-)
-from ..client import Bot
 from dataclasses import dataclass
+from typing import Any, TypeVar
 
+from ..client import Bot
+from ..types import Update
+from .accessors import TEvent
+from .methods import ContextMethods
 
-TContext = TypeVar("TContext", bound="BaseContext")  
+TContext = TypeVar("TContext", bound="BaseContext[Any]")
+
 
 @dataclass
-class BaseContext:
-    
-    update: Update 
+class BaseContext(ContextMethods[TEvent]):
+    update: Update
     bot: Bot
-
-    @property
-    def message(self) -> Optional[Message]:
-        return self.update.message
-    
-    async def reply(self, text: str):
-        if not self.message:
-            raise 
-
-        response = await self.bot.send_message(text=text, chat_id=self.message.chat.id)
-        return response
-    
-
