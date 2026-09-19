@@ -38,6 +38,13 @@ class KeyboardError(SelfrotError, ValueError):
     """Клавиатуру собрать нельзя: пустой или слишком широкий ряд, больше 100 кнопок."""
 
 
+class FSMError(SelfrotError, RuntimeError):
+    """
+    Состояние диалога не удалось прочитать или записать: неподходящее состояние,
+    данные не той модели, у апдейта нет ключа.
+    """
+
+
 class BotNotBoundError(SelfrotError, RuntimeError):
     """
     Метод на объекте (message.answer, callback.answer) вызван у объекта, который не

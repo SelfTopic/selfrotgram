@@ -14,6 +14,7 @@ from aiohttp import web
 from ..client import Bot
 from ..context import TContext
 from ..exceptions import SelfrotError, TelegramNotFound, TelegramUnauthorized
+from ..fsm import FSM, MemoryStorage, Storage
 from ..router import BaseRouter
 from ..types import Update
 from .runner import UpdateRunner
@@ -56,6 +57,9 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
     max_concurrent_updates: int = 100
     # При остановке начатым хендлерам даётся столько секунд, потом их отменяют.
     shutdown_timeout: float = 10.0
+    # Хранилище состояний диалогов (ctx.fsm). None — MemoryStorage (пропадает при
+    # перезапуске); своё: fsm_storage = MemoryStorage(ttl=600) или любой Storage.
+    fsm_storage: Storage | None = None
 
     def __init__(self, token: str | None = None) -> None:
         """
@@ -65,6 +69,8 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
         super().__init__()
         self.api = self.bot(token)
         self._runner = UpdateRunner(self.max_concurrent_updates, self.shutdown_timeout)
+        # Свой экземпляр на диспетчер: общий на уровне класса делили бы все диспетчеры.
+        self._fsm_storage: Storage = self.fsm_storage or MemoryStorage()
 
     async def poll_updates(self) -> AsyncGenerator[Update, None]:
 
@@ -141,7 +147,23 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
             "Ошибка при обработке update %s", ctx.update.update_id, exc_info=exc
         )
 
+    def fsm_key(self, ctx: TContext) -> str | None:
+        """
+        Чей это диалог. По умолчанию «чат:пользователь»: в группе у каждого участника
+        свой сценарий, в личке чат совпадает с пользователем. Переопределяется:
+        `return str(ctx.chat_id)` — один сценарий на весь чат. None — у апдейта нет
+        ни чата, ни пользователя (состояние некуда привязать).
+        """
+        chat, user = ctx.chat, ctx.user
+        if user is None:
+            return None
+
+        return f"{chat.id if chat else user.id}:{user.id}"
+
     async def _handle(self, ctx: TContext) -> None:
+        if ctx._fsm is None:
+            ctx._fsm = FSM(self._fsm_storage, self.fsm_key(ctx))
+
         # Ошибка одного апдейта (в том числе сеть при ответе, и даже сам on_error)
         # не должна ронять бота.
         try:
@@ -183,6 +205,7 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
         )
 
     async def _stop(self, started: bool) -> None:
+        logger.info("Остановка: дожидаюсь начатых хендлеров")
         try:
             await self._runner.drain()
             if started:
@@ -198,6 +221,7 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
             started = True
             await self.on_startup()
 
+            logger.info("Запущен @%s, жду апдейты (long polling)", self.api.username)
             async for update in self.poll_updates():
                 await self.feed_update(update)
         finally:

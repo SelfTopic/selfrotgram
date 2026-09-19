@@ -2,6 +2,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from .callback_data import CallbackPayload
 from .client import Bot, BotDefaults
+from .fsm import MemoryStorage, State, States
 from .context import BaseContext, TEvent
 from .dispatcher import BaseDispatcher
 from .handlers import BaseHandler, MessageHandler
@@ -22,6 +23,9 @@ __all__ = [
     "BaseRouter",
     "Bot",
     "BotDefaults",
+    "State",
+    "States",
+    "MemoryStorage",
     "CallbackPayload",
     "InlineKeyboard",
     "MessageHandler",

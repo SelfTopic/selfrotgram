@@ -15,6 +15,8 @@ from .has import *
 from .member import ChatMemberTransition as ChatMemberTransition
 from .member import MemberJoined as MemberJoined
 from .member import MemberLeft as MemberLeft
+from .state import InState as InState
+from .state import NoState as NoState
 from .text import Text as Text
 from .text import TextContains as TextContains
 from .text import TextEndswith as TextEndswith
