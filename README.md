@@ -82,6 +82,30 @@ if __name__ == "__main__":
 него читается `bot_token` из `bot_cfg.cfg` в текущей папке. Настройки бота (`defaults`,
 `proxy`, таймауты) задаются в подклассе `Bot`.
 
+## Заготовка проекта: `selfrot init`
+
+Библиотека ставит команду `selfrot`. В существующем проекте (там уже стоит `selfrotgram`):
+
+```bash
+selfrot init                 # создаёт src/bot (или selfrot init app/bot, другой путь)
+selfrot init --dry-run       # только показать, что будет создано
+```
+
+```
+.env.example                 BOT_TOKEN=...
+src/bot/
+  __main__.py                диспетчер и запуск (on_startup, on_shutdown, логирование)
+  bot.py                     AppBot: настройки бота (defaults, proxy, таймауты) в комментариях
+  context.py                 AppContext: сюда добавляются ваши зависимости
+  routers/__init__.py        RootRouter: сюда подключаются остальные роутеры
+  routers/start.py           стартовый /start, чтобы бот сразу отвечал
+  keyboards/  middlewares/  filters/     пустые места под ваш код
+```
+
+Создаётся только то, что касается самой библиотеки. Сервисы, база данных и структура бизнес-логики
+остаются вашим делом. Существующие файлы команда **никогда не перезаписывает**. Запуск:
+`BOT_TOKEN=... python -m src.bot`.
+
 ## Документация
 
 | Что | Где |
