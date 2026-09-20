@@ -161,6 +161,7 @@ $ selfrot check
 | Как устроена библиотека | [docs/design.md](docs/design.md) |
 | Отличия от aiogram и что там было / что здесь | [docs/from-aiogram.md](docs/from-aiogram.md) |
 | Работающие примеры (запуск: `python -m examples.echo_bot`) | [examples/](examples) |
+| История изменений и правила версий | [CHANGELOG.md](CHANGELOG.md) |
 | Журнал решений (для любопытных) | [docs/decisions.md](docs/decisions.md) |
 
 ## Что умеет
@@ -204,3 +205,7 @@ python scripts/generate_types.py --fetch    # скачать свежую спе
 Тесты не ходят в Telegram: `tests/conftest.py` поднимает на localhost фейковый сервер Bot API,
 записывающий все вызовы. Каждый пример из `examples/` дополнительно собирается в диспетчер в
 `tests/test_examples.py`, чтобы не устаревать.
+
+## Лицензия
+
+[MIT](LICENSE).

@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Async Python library for Telegram Bot API: types and methods generated from the spec, filters, routers, webhooks"
 readme = "README.md"
 requires-python = ">=3.11"
+license = {text = "MIT"}
 authors = [
     {name = "CheStor", email = "selftopic@gmail.com"}
 ]
@@ -16,6 +17,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Framework :: AsyncIO",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
