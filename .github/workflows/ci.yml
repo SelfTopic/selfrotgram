@@ -75,6 +75,10 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install -U pip
+      # Сборка и проверка метаданных так же, как при публикации (README, лицензия, поля)
+      - run: pip install build twine
+      - run: python -m build
+      - run: twine check --strict dist/*
       # Обычная (не editable) установка: проверяет упаковку и точку входа selfrot
       - run: pip install .
       - name: Заготовка проекта на чистой установке

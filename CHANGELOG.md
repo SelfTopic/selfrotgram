@@ -5,6 +5,22 @@
 минор** (`0.1` → `0.2`), исправления и совместимые добавления увеличивают патч (`0.1.0` →
 `0.1.1`). Поэтому `poetry add` записывает `^0.1.0`, то есть `>=0.1.0,<0.2.0`.
 
+## [0.1.1] — 2026-09-20
+
+Первая версия на PyPI (`pip install selfrotgram`). Возможности те же, что в 0.1.0; версия `0.1.0`
+существует только как тег в git и на PyPI не публиковалась.
+
+### Изменено
+- упаковка для PyPI: ссылки в README абсолютные (на PyPI относительные не работают), в метаданных
+  ссылки `Documentation`, `Changelog`, `Issues`
+- README: установка с PyPI (`pip install selfrotgram`, `poetry add selfrotgram`), установка из git
+  осталась как запасной путь
+
+### Добавлено
+- публикация на PyPI из GitHub Actions без токена (`publish.yml`, trusted publishing) и
+  инструкция по выпуску версий (`docs/releasing.md`)
+- проверка метаданных пакета (`twine check --strict`) в обычном CI
+
 ## [0.1.0] — 2026-09-20
 
 Первый выпуск. Поддерживает Bot API 10.3, Python 3.11, 3.12 и 3.13.
@@ -52,4 +68,5 @@
 - отложенные вызовы и `MemoryStorage` живут в памяти и пропадают при перезапуске бота
 - API может меняться (альфа)
 
+[0.1.1]: https://github.com/SelfTopic/selfrotgram/releases/tag/v0.1.1
 [0.1.0]: https://github.com/SelfTopic/selfrotgram/releases/tag/v0.1.0

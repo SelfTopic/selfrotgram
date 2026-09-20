@@ -31,23 +31,25 @@ class Echo(MessageHandler[BaseContext[TextMessage]]):    # обещаю: у со
 - **Типизированные диалоги и кнопки:** данные шага FSM и `callback_data` это модели с
   типами, а не словари и склеенные строки.
 
-Знаете aiogram? [Сравнение с ним](docs/from-aiogram.md) с парами «было / стало».
+Знаете aiogram? [Сравнение с ним](https://github.com/SelfTopic/selfrotgram/blob/main/docs/from-aiogram.md) с парами «было / стало».
 
 ## Установка
 
-Прямой ссылкой на репозиторий, как любая git-зависимость. В `pyproject.toml` проекта:
-
-```toml
-[project]
-dependencies = [
-    "selfrotgram @ git+https://github.com/SelfTopic/selfrotgram.git",
-]
+```bash
+pip install selfrotgram
+poetry add selfrotgram
 ```
 
-Дальше `poetry lock` и `poetry install`: Poetry запишет в `poetry.lock` конкретный коммит.
-Обновить до свежего: `poetry update selfrotgram`. Закрепить версию:
-`...selfrotgram.git@v0.1.0` (тег, ветка или коммит). Без Poetry:
-`pip install "selfrotgram @ git+https://github.com/SelfTopic/selfrotgram.git"`.
+Обновить: `pip install -U selfrotgram` или `poetry update selfrotgram`. Poetry запишет `^0.1.1`,
+то есть `>=0.1.1,<0.2.0`: пока версия `0.x`, ломающие изменения увеличивают минор (см.
+[CHANGELOG.md](https://github.com/SelfTopic/selfrotgram/blob/main/CHANGELOG.md)).
+
+Свежий коммит, ещё не вышедший на PyPI, или закреплённый тег ставятся прямо из git:
+
+```bash
+pip install "selfrotgram @ git+https://github.com/SelfTopic/selfrotgram.git"
+poetry add "git+https://github.com/SelfTopic/selfrotgram.git#v0.1.1"
+```
 
 Ставится как `selfrotgram`, импортируется как `selfrot`. Зависимости (`aiohttp>=3.12`,
 `pydantic>=2.11`, `typing_extensions>=4.14`) совместимы с `aiogram 3.x`, поэтому обе
@@ -157,12 +159,13 @@ $ selfrot check
 
 | Что | Где |
 |---|---|
-| Каждый пример по шагам, простыми словами | [docs/examples.md](docs/examples.md) |
-| Как устроена библиотека | [docs/design.md](docs/design.md) |
-| Отличия от aiogram и что там было / что здесь | [docs/from-aiogram.md](docs/from-aiogram.md) |
-| Работающие примеры (запуск: `python -m examples.echo_bot`) | [examples/](examples) |
-| История изменений и правила версий | [CHANGELOG.md](CHANGELOG.md) |
-| Журнал решений (для любопытных) | [docs/decisions.md](docs/decisions.md) |
+| Каждый пример по шагам, простыми словами | [docs/examples.md](https://github.com/SelfTopic/selfrotgram/blob/main/docs/examples.md) |
+| Как устроена библиотека | [docs/design.md](https://github.com/SelfTopic/selfrotgram/blob/main/docs/design.md) |
+| Отличия от aiogram и что там было / что здесь | [docs/from-aiogram.md](https://github.com/SelfTopic/selfrotgram/blob/main/docs/from-aiogram.md) |
+| Работающие примеры (запуск: `python -m examples.echo_bot`) | [examples/](https://github.com/SelfTopic/selfrotgram/tree/main/examples) |
+| История изменений и правила версий | [CHANGELOG.md](https://github.com/SelfTopic/selfrotgram/blob/main/CHANGELOG.md) |
+| Как выпускать версии на PyPI | [docs/releasing.md](https://github.com/SelfTopic/selfrotgram/blob/main/docs/releasing.md) |
+| Журнал решений (для любопытных) | [docs/decisions.md](https://github.com/SelfTopic/selfrotgram/blob/main/docs/decisions.md) |
 
 ## Что умеет
 
@@ -186,7 +189,7 @@ $ selfrot check
 
 Локализации, сцен, готового хранилища FSM в Redis, скачивания файлов и загрузки файлов
 внутри альбомов, сборщика reply-клавиатур. Подробнее и честно:
-[docs/from-aiogram.md](docs/from-aiogram.md#чего-здесь-нет-а-в-aiogram-есть).
+[docs/from-aiogram.md](https://github.com/SelfTopic/selfrotgram/blob/main/docs/from-aiogram.md#чего-здесь-нет-а-в-aiogram-есть).
 
 ## Разработка
 
@@ -208,4 +211,4 @@ python scripts/generate_types.py --fetch    # скачать свежую спе
 
 ## Лицензия
 
-[MIT](LICENSE).
+[MIT](https://github.com/SelfTopic/selfrotgram/blob/main/LICENSE).

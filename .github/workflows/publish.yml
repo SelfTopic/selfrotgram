@@ -1,0 +1,80 @@
+name: Publish
+
+# Публикация на PyPI без токена: PyPI доверяет этому репозиторию и файлу (trusted publishing).
+#   тег v*            -> настоящий PyPI (сразу после сборки и проверок)
+#   ручной запуск     -> TestPyPI (репетиция) или PyPI; выбрать тег v0.1.0 в поле «Use workflow from»
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Куда публиковать"
+        type: choice
+        options: [testpypi, pypi]
+        default: testpypi
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Сборка и проверка
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -U pip build twine
+      - name: Версия в pyproject.toml совпадает с тегом
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Тег $GITHUB_REF_NAME не совпадает с версией v$version из pyproject.toml"
+            exit 1
+          fi
+      - run: python -m build
+      - run: twine check --strict dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish-testpypi:
+    name: Публикация на TestPyPI
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: testpypi
+    permissions:
+      id-token: write # только это задание может получить токен публикации
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    name: Публикация на PyPI
+    needs: build
+    # Настоящий PyPI только с тега: запуск с ветки сюда не попадёт.
+    if: github.ref_type == 'tag' && (github.event_name == 'push' || inputs.target == 'pypi')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
