@@ -40,3 +40,53 @@ def test_chestor_routers_tree_builds():
     from examples.chestor_routers.dispatcher import AppDispatcher
 
     assert len(list(AppDispatcher(token="123456:TEST-token").children)) > 0
+
+
+async def feed(dispatcher, raw):
+    from .conftest import bind
+
+    await dispatcher._handle(dispatcher.create_context(bind(raw, dispatcher.api)))
+
+
+async def test_filtered_bot_private_and_group(telegram):
+    from examples.filtered_bot import Dispatcher
+
+    from .conftest import message_update
+
+    dp = Dispatcher(token="123456:TEST-token")
+    await feed(dp, message_update("привет", uid=7))
+    await feed(dp, message_update("привет", uid=7, chat=-100))
+    assert [m["text"] for m in telegram.sent] == [
+        "Только между нами: привет",
+        "В группах я не эхо-бот, напиши мне в личку.",
+    ]
+    await dp.api.close_session()
+
+
+async def test_db_bot_counts_messages_per_user(telegram, tmp_path, monkeypatch):
+    pytest.importorskip("sqlalchemy")
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from examples import db_bot
+
+    from .conftest import message_update
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'test.sqlite3'}")
+    monkeypatch.setattr(db_bot, "engine", engine)
+    monkeypatch.setattr(
+        db_bot, "session_factory", async_sessionmaker(engine, expire_on_commit=False)
+    )
+
+    dp = db_bot.Dispatcher(token="123456:TEST-token")
+    await dp.on_startup()
+    for _ in range(2):
+        await feed(dp, message_update("привет", uid=7))
+    await feed(dp, message_update("привет", uid=8))
+
+    assert [m["text"] for m in telegram.sent] == [
+        "Сообщений от тебя: 1",
+        "Сообщений от тебя: 2",
+        "Сообщений от тебя: 1",  # у другого пользователя свой счёт
+    ]
+    await dp.on_shutdown()
+    await dp.api.close_session()

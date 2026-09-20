@@ -26,7 +26,6 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
-    logging.basicConfig(level=logging.INFO)
 
     dp = Dispatcher(token=os.environ.get("BOT_TOKEN"))
     dp.start_polling()
