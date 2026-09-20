@@ -14,6 +14,8 @@
 |---|---|---|
 | Хендлер | функция с декоратором `@router.message(...)` | класс `MessageHandler` с `query = <фильтр>` и методом `handle()` |
 | Что получает хендлер | аргументы по имени и типу: `message`, `state`, `bot`, свои сервисы (`dp["key"]`, `Provide[...]`) | всё через `self.ctx`: `ctx.message`, `ctx.bot`, `ctx.fsm`, поля вашего контекста |
+| Аргументы команды | `CommandObject.args`: одна строка, разбор и проверка вручную | `CommandArgs`: форма аргументов моделью, `cmd.parse(ctx)` даёт объект с типами, `CommandArgsError` с подсказкой |
+| Отложенные действия | вручную `asyncio.create_task(...)` и `sleep` (ссылки на задачи, лимит, остановка на вас) | `self.defer(fn, delay=...)`, `after_handle()`: после закрытия хендлера и мидлварей, с лимитом, ошибками в `on_error` и штатной остановкой |
 | Фильтры | `F.text == "x"`, `Command()`, `Filter`-классы | классы: `Text("x")`, `Command("x")`, `HasText()`, свои через `BaseFilter.check()` |
 | Комбинация фильтров | `and_f`, `or_f`, `&` `\|` `~` у `F` | `&`, `\|`, `~` у любых фильтров |
 | `message.text` может быть `None` | проверка вручную | фильтр `HasText()` и тип `TextMessage` в заголовке: `text` всегда `str` |
@@ -56,6 +58,35 @@ class Sum(MessageHandler[BaseContext[TextMessage]]):
     async def handle(self):
         a, b = (int(x) for x in self.cmd.parse(self.ctx).args)
         await self.ctx.message.answer(f"{a + b}")
+```
+
+**Команда с типизированными аргументами.**
+
+```python
+# aiogram: args это одна строка, всё остальное вручную
+@router.message(Command("calc"))
+async def calc(message: Message, command: CommandObject):
+    try:
+        one, operator, two = command.args.split()
+        result = int(one) + int(two) if operator == "+" else ...
+    except (AttributeError, ValueError):
+        await message.answer("Использование: /calc 2 + 3")
+```
+
+```python
+# selfrotgram: форма аргументов описана один раз
+class CalcArgs(CommandArgs):
+    one: int
+    operator: Literal["+", "-", "*", "/"]
+    two: int
+
+class Calc(MessageHandler[BaseContext[TextMessage]]):
+    cmd = Command("calc", CalcArgs)
+    query = cmd
+
+    async def handle(self):
+        args = self.cmd.parse(self.ctx)      # args.one: int, args.operator: Literal[...]
+        # неверные аргументы: CommandArgsError с .usage, его ловит on_error
 ```
 
 **Кнопка с данными.**

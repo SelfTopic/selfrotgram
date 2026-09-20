@@ -15,6 +15,8 @@ EXAMPLES = [  # у каждого есть хендлеры
     ("examples.keyboards_bot", "Dispatcher", None),
     ("examples.chat_members", "Dispatcher", None),
     ("examples.fsm_bot", "Dispatcher", None),
+    ("examples.data_parsed_bot", "Dispatcher", None),
+    ("examples.deferred_bot", "Dispatcher", None),
     ("examples.webhook_bot", "Dispatcher", None),
     ("examples.db_bot", "Dispatcher", "sqlalchemy"),
     ("examples.bot_command.dispatcher", "AppDispatcher", "sqlalchemy"),
@@ -89,4 +91,79 @@ async def test_db_bot_counts_messages_per_user(telegram, tmp_path, monkeypatch):
         "Сообщений от тебя: 1",  # у другого пользователя свой счёт
     ]
     await dp.on_shutdown()
+    await dp.api.close_session()
+
+
+async def test_data_parsed_bot_answers_and_explains_mistakes(telegram):
+    from examples.data_parsed_bot import Dispatcher
+
+    from .conftest import message_update
+
+    dp = Dispatcher(token="123456:TEST-token")
+    for text in [
+        "/calc 2 + 3",
+        "/calc 6 / 0",
+        "/calc 2 + x",
+        "/calc",
+        "/say 2 привет  мир",
+        "/say",
+        "/say x",
+    ]:
+        await feed(dp, message_update(text))
+
+    answers = [m["text"] for m in telegram.sent]
+    assert answers[0] == "2 + 3 = 5"
+    assert answers[1] == "6 / 0 = на ноль делить нельзя"
+    assert (
+        answers[2]
+        == "Не получилось: нужно целое число.\nНужно: /calc <one> <operator: +|-|*|/> <two>"
+    )
+    assert answers[3].startswith("Не получилось: не хватает аргумента")
+    assert answers[4] == "привет  мир\nпривет  мир"
+    assert answers[5] == "Что сказать?"
+    assert answers[6].endswith("Нужно: /say [times] [text...]")
+    await dp.api.close_session()
+
+
+async def test_deferred_bot_secret_remind_report(telegram, monkeypatch):
+    import asyncio
+
+    from examples import deferred_bot
+
+    from .conftest import message_update
+
+    monkeypatch.setattr(deferred_bot, "SECRET_TTL", 0.05)
+    monkeypatch.setattr(deferred_bot, "REPORT_SECONDS", 0.05)
+    dp = deferred_bot.Dispatcher(token="123456:TEST-token")
+
+    async def settle():
+        async with asyncio.timeout(2):
+            while dp._background.active:
+                await asyncio.sleep(0.01)
+
+    await feed(dp, message_update("/secret"))
+    assert telegram.methods() == [
+        "sendMessage"
+    ]  # хендлер ответил и закончил, удаление ещё впереди
+    await settle()
+    assert telegram.methods() == ["sendMessage", "deleteMessage"]
+
+    telegram.clear()
+    await feed(dp, message_update("/remind 0 позвонить маме"))
+    await settle()
+    assert [m["text"] for m in telegram.sent] == [
+        "Напомню через 0 с",
+        "⏰ Напоминание: позвонить маме",
+    ]
+
+    telegram.clear()
+    await feed(dp, message_update("/remind x"))
+    assert telegram.sent[-1]["text"] == "Нужно: /remind <seconds> <text...>"
+
+    telegram.clear()
+    await feed(dp, message_update("/report"))
+    assert telegram.methods() == ["sendMessage"]
+    await settle()
+    assert telegram.methods() == ["sendMessage", "editMessageText"]
+    assert telegram.last()[1]["text"] == "✅ Отчёт готов"
     await dp.api.close_session()

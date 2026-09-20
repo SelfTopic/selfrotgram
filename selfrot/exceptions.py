@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -36,6 +37,42 @@ class CallbackDataError(SelfrotError, ValueError):
 
 class KeyboardError(SelfrotError, ValueError):
     """Клавиатуру собрать нельзя: пустой или слишком широкий ряд, больше 100 кнопок."""
+
+
+@dataclass(frozen=True)
+class ArgProblem:
+    """Что не так с одним аргументом команды."""
+
+    field: str  # имя поля модели; пусто у проблем всей строки (лишние аргументы)
+    message: str
+    value: Any = None
+
+
+class CommandArgsError(SelfrotError, ValueError):
+    """
+    Аргументы команды не подошли под модель CommandArgs: не то число, не тот тип,
+    значение вне Literal. Хендлер получает её из parse() и ловит в on_error:
+
+        problems — что именно не так (по полям), usage — «/calc <one> <operator> <two>»,
+        command — имя команды, text — что написал пользователь.
+    """
+
+    def __init__(
+        self, command: str, usage: str, problems: tuple[ArgProblem, ...], text: str
+    ) -> None:
+        found = "; ".join(f"{p.field}: {p.message}" if p.field else p.message for p in problems)
+        super().__init__(f"{command}: неверные аргументы ({found}); ожидается: {usage}")
+        self.command = command
+        self.usage = usage
+        self.problems = problems
+        self.text = text
+
+
+class DeferredLimitError(SelfrotError, RuntimeError):
+    """
+    Слишком много отложенных вызовов одновременно (Dispatcher.max_deferred). Из
+    defer() приходит в on_error хендлера: можно ответить «попробуйте позже».
+    """
 
 
 class FSMError(SelfrotError, RuntimeError):

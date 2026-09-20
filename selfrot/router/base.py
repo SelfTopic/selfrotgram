@@ -1,8 +1,13 @@
 import importlib
 import sys
 from abc import ABC
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Generic, List, Optional, Sequence, Set, Type, Union
+from typing import (
+    Any,
+    Generic,
+    Union,
+)
 
 from ..context.context import TContext
 from ..exceptions import DefinitionError, RouterError
@@ -12,14 +17,14 @@ from ..middleware import BaseMiddleware
 
 @dataclass
 class _Match:
-    path: List["BaseRouter[Any]"]
+    path: list["BaseRouter[Any]"]
     handler: BaseHandler[Any]
 
 
-_building: List[type] = []
+_building: list[type] = []
 
 
-def _load_router(path: str, package: Optional[str]) -> Any:
+def _load_router(path: str, package: str | None) -> Any:
     if path.startswith(".") and not package:
         raise RouterError(
             f"auto_connect: путь {path!r} относительный, а у роутера нет пакета"
@@ -37,13 +42,13 @@ def _load_router(path: str, package: Optional[str]) -> Any:
 
 
 async def _run_middlewares(
-    middlewares: Sequence[Type[BaseMiddleware[Any]]],
+    middlewares: Sequence[type[BaseMiddleware[Any]]],
     ctx: Any,
     inner: Callable[[], Awaitable[None]],
 ) -> None:
-    called_middlewares: List[BaseMiddleware[Any]] = []
+    called_middlewares: list[BaseMiddleware[Any]] = []
     passed = True
-    exc: Optional[BaseException] = None
+    exc: BaseException | None = None
 
     try:
         # pre_handle тоже внутри try: если он упал у третьей мидлвари, первые
@@ -78,7 +83,7 @@ async def _run_middlewares(
 
 
 async def _run_path(
-    routers: List["BaseRouter[Any]"], handler: BaseHandler[Any], ctx: Any
+    routers: list["BaseRouter[Any]"], handler: BaseHandler[Any], ctx: Any
 ) -> None:
     if not routers:
         await handler.pre_handle()
@@ -103,18 +108,18 @@ class BaseRouter(ABC, Generic[TContext]):
     каждый апдейт, который мог бы сюда попасть.
     """
 
-    context: Type[TContext]
+    context: type[TContext]
     # Кортежи: неизменяемые, поэтому общие для всех экземпляров безопасно,
     # и линтеру не за что ругаться (RUF012). register_* пересобирают кортеж
     # у экземпляра, класс не трогают.
-    handlers: Sequence[Type[BaseHandler[Any]]] = ()
-    middlewares: Sequence[Type[BaseMiddleware[Any]]] = ()
-    routers: Sequence[Type["BaseRouter[Any]"]] = ()
+    handlers: Sequence[type[BaseHandler[Any]]] = ()
+    middlewares: Sequence[type[BaseMiddleware[Any]]] = ()
+    routers: Sequence[type["BaseRouter[Any]"]] = ()
     auto_connect: Sequence[str] = ()
 
     def __init__(self) -> None:
         super().__init__()
-        self._children: List[BaseRouter[Any]] = []
+        self._children: list[BaseRouter[Any]] = []
 
         # Порядок подключения: routers, затем auto_connect, затем register_routers().
         _building.append(type(self))
@@ -131,10 +136,10 @@ class BaseRouter(ABC, Generic[TContext]):
             _building.pop()
 
     @property
-    def children(self) -> List["BaseRouter[Any]"]:
+    def children(self) -> list["BaseRouter[Any]"]:
         return list(self._children)
 
-    def used_update_types(self) -> Set[str]:
+    def used_update_types(self) -> set[str]:
         """Поля Update, на которые есть хендлеры в этом роутере и ниже."""
         used = {handler.update_field for handler in self.handlers}
         for child in self._children:
@@ -142,16 +147,16 @@ class BaseRouter(ABC, Generic[TContext]):
 
         return used
 
-    def register_handler(self, handler: Type[BaseHandler[Any]]) -> None:
+    def register_handler(self, handler: type[BaseHandler[Any]]) -> None:
         self.handlers = (*self.handlers, handler)
 
-    def register_middleware(self, middleware: Type[BaseMiddleware[Any]]) -> None:
+    def register_middleware(self, middleware: type[BaseMiddleware[Any]]) -> None:
         self.middlewares = (*self.middlewares, middleware)
 
     def register_routers(self) -> None:
         """Переопределяется в наследнике: self.register_router(...) по одному."""
 
-    def register_router(self, router: Union[Type["BaseRouter[Any]"], "BaseRouter[Any]"]) -> None:
+    def register_router(self, router: Union[type["BaseRouter[Any]"], "BaseRouter[Any]"]) -> None:
         if isinstance(router, type) and issubclass(router, BaseRouter):
             if router in _building:
                 chain = " -> ".join(c.__name__ for c in [*_building, router])
@@ -166,7 +171,7 @@ class BaseRouter(ABC, Generic[TContext]):
 
         self._children.append(router)
 
-    def _auto_connect_package(self) -> Optional[str]:
+    def _auto_connect_package(self) -> str | None:
         # Относительные пути считаются от пакета модуля, где объявлен auto_connect.
         for klass in type(self).__mro__:
             if "auto_connect" in klass.__dict__:
@@ -175,8 +180,8 @@ class BaseRouter(ABC, Generic[TContext]):
         return None
 
     async def _find(
-        self, ctx: Any, path: List["BaseRouter[Any]"]
-    ) -> Optional[_Match]:
+        self, ctx: Any, path: list["BaseRouter[Any]"]
+    ) -> _Match | None:
         path = [*path, self]
 
         for handler_type in self.handlers:
@@ -191,8 +196,13 @@ class BaseRouter(ABC, Generic[TContext]):
 
         return None
 
-    async def propagate(self, ctx: TContext) -> None:
-        found: List[BaseHandler[Any]] = []
+    async def propagate(self, ctx: TContext) -> BaseHandler[Any] | None:
+        """
+        Обработать апдейт. Возвращает сработавший хендлер, если всё прошло без ошибок
+        (на это опирается запуск отложенного); None — хендлера не нашлось, он не пропущен
+        мидлварью или случилась ошибка (даже обработанная в on_error).
+        """
+        found: list[BaseHandler[Any]] = []
 
         async def route() -> None:
             match = await self._find(ctx, [])
@@ -211,3 +221,6 @@ class BaseRouter(ABC, Generic[TContext]):
                 raise
 
             await found[0].on_error(exc)
+            return None
+
+        return found[0] if found else None

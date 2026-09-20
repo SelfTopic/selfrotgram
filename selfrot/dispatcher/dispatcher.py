@@ -6,6 +6,7 @@ from functools import partial
 from typing import (
     Any,
     Generic,
+    cast,
 )
 from urllib.parse import urlparse
 
@@ -13,8 +14,15 @@ from aiohttp import web
 
 from ..client import Bot
 from ..context import TContext
-from ..exceptions import SelfrotError, TelegramNotFound, TelegramUnauthorized
+from ..deferred import BackgroundTasks, Deferred
+from ..exceptions import (
+    DeferredLimitError,
+    SelfrotError,
+    TelegramNotFound,
+    TelegramUnauthorized,
+)
 from ..fsm import FSM, MemoryStorage, Storage
+from ..handlers import BaseHandler
 from ..router import BaseRouter
 from ..types import Update
 from .runner import UpdateRunner
@@ -60,6 +68,10 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
     # Хранилище состояний диалогов (ctx.fsm). None — MemoryStorage (пропадает при
     # перезапуске); своё: fsm_storage = MemoryStorage(ttl=600) или любой Storage.
     fsm_storage: Storage | None = None
+    # Сколько отложенных вызовов (defer, after_handle) может жить одновременно; лишний
+    # defer даёт DeferredLimitError. Не связано со слотами апдейтов: отложенное ждёт
+    # уже после того, как слот освободился.
+    max_deferred: int = 1000
 
     def __init__(self, token: str | None = None) -> None:
         """
@@ -71,6 +83,7 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
         self._runner = UpdateRunner(self.max_concurrent_updates, self.shutdown_timeout)
         # Свой экземпляр на диспетчер: общий на уровне класса делили бы все диспетчеры.
         self._fsm_storage: Storage = self.fsm_storage or MemoryStorage()
+        self._background = BackgroundTasks(self.max_deferred)
 
     async def poll_updates(self) -> AsyncGenerator[Update, None]:
 
@@ -164,15 +177,51 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
         if ctx._fsm is None:
             ctx._fsm = FSM(self._fsm_storage, self.fsm_key(ctx))
 
+        ctx._background = self._background
+
         # Ошибка одного апдейта (в том числе сеть при ответе, и даже сам on_error)
         # не должна ронять бота.
+        handler = None
         try:
             try:
-                await self.propagate(ctx)
+                handler = await self.propagate(ctx)
             except Exception as exc:  # noqa: BLE001 - граница: дальше своя обработка
                 await self.on_error(ctx, exc)
         except Exception:
             logger.exception("on_error упал на update %s", ctx.update.update_id)
+        finally:
+            # Хендлер и мидлвари закрыты. Отложенное стартует только после успеха
+            # (как on_commit): при ошибке, отмене или отсутствии хендлера записанные
+            # вызовы отбрасываются.
+            if handler is not None:
+                await self._launch_deferred(ctx, handler)
+            else:
+                self._background.discard(ctx._deferred)
+
+    async def _launch_deferred(self, ctx: TContext, handler: BaseHandler[Any]) -> None:
+        pending = list(ctx._deferred)
+        if type(handler).after_handle is not BaseHandler.after_handle:
+            after = Deferred(handler.after_handle, (), {}, 0.0, ctx=ctx, owner=handler)
+            try:
+                self._background.register(after)
+            except DeferredLimitError as exc:
+                await self._deferred_failed(after, exc)
+            else:
+                pending.append(after)
+
+        for deferred in pending:
+            self._background.start(deferred, self._deferred_failed)
+
+    async def _deferred_failed(self, deferred: Deferred, exc: Exception) -> None:
+        """Ошибка отложенного вызова идёт тем же путём, что ошибка хендлера."""
+        try:
+            if deferred.owner is not None:
+                await deferred.owner.on_error(exc)
+                return
+
+            raise exc
+        except Exception as unhandled:  # noqa: BLE001
+            await self.on_error(cast(TContext, deferred.ctx), unhandled)
 
     async def on_startup(self) -> None:
         """
@@ -208,6 +257,7 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
         logger.info("Остановка: дожидаюсь начатых хендлеров")
         try:
             await self._runner.drain()
+            await self._background.drain(self.shutdown_timeout)
             if started:
                 await self.on_shutdown()
         finally:

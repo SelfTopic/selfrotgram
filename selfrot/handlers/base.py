@@ -1,10 +1,12 @@
 import typing
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from typing import Any, ClassVar, Generic
 
 from pydantic import BaseModel
 
 from ..context import TContext
+from ..deferred import Deferred
 from ..exceptions import DefinitionError
 from ..filter import BaseFilter, Guarantee
 from ..utils.narrowing import is_bot_api_type, required_fields, root_type
@@ -89,6 +91,33 @@ class BaseHandler(ABC, Generic[TContext]):
         (ctx.reply_message) можно.
         """
         raise exc
+
+    async def after_handle(self) -> None:
+        """
+        Вторая половина работы, уже после закрытия хендлера: handle закончился,
+        мидлвари отработали (сессия БД закоммичена и закрыта), слот диспетчера свободен.
+        Сюда выносят долгое ожидание (результат фоновой задачи) и отложенные действия.
+        Не запускается, если хендлер или мидлварь упали. Ошибка отсюда идёт в
+        on_error. Сессии БД здесь нет: нужна своя. По умолчанию ничего не делает.
+        """
+
+    def defer(
+        self,
+        fn: Callable[..., Awaitable[Any]],
+        *args: Any,
+        delay: float = 0.0,
+        **kwargs: Any,
+    ) -> Deferred:
+        """
+        Вызвать async-функцию позже, после закрытия хендлера, через delay секунд:
+
+            sent = await self.ctx.message.reply("Код: 1234")
+            self.defer(sent.delete, delay=60)
+
+        Не запускается, если хендлер упал. Возвращает ручку с .cancel(). Таймеры живут
+        в памяти: при перезапуске бота пропадают.
+        """
+        return self.ctx.defer(fn, *args, delay=delay, owner=self, **kwargs)
 
     async def filter(self) -> bool:
         if self.query is None:

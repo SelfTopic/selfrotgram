@@ -97,6 +97,10 @@ if __name__ == "__main__":
 - **Фильтры:** `Text*`, `Command`, `CallbackData*`, `CallbackPayload` (типизированные данные
   кнопок, `pressed_by`), `Has*` (по одному на каждое поле), `MemberJoined`/`MemberLeft`,
   `FromUser`, `InState`; комбинаторы `&`, `|`, `~`.
+- **Аргументы команд как данные:** `CommandArgs` (типы, `Literal`, необязательные, `Rest`) и
+  `CommandArgsError` с готовой подсказкой.
+- **Отложенные действия:** `self.defer(fn, delay=...)` и `after_handle()`: сделать позже, уже после
+  закрытия хендлера, не занимая слот и сессию БД.
 - **Диспетчер:** long polling и вебхуки, параллельная обработка апдейтов, `on_startup` и
   `on_shutdown`, `on_error` на хендлере и диспетчере, остановка по SIGTERM.
 - **Роутеры и мидлвари:** дерево роутеров (`auto_connect`), мидлвари с `pre_handle` и
