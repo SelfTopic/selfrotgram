@@ -6,6 +6,7 @@ from typing import Any
 
 from ..handlers.base import BaseHandler, _header_payload_type
 from ..router.base import BaseRouter
+from .analysis import iter_handlers, unreachable
 from .init import InitError
 
 # Токен нужен только конструктору Bot, в сеть при построении дерева никто не ходит.
@@ -85,9 +86,7 @@ def build_tree(
     )
     rows: list[Row] = []
     counts = {"routers": 0, "handlers": 0, "warnings": 0}
-    catch_all: dict[
-        str, str
-    ] = {}  # вид -> первый хендлер без фильтра выше по порядку проверки
+    reasons = unreachable(list(iter_handlers(dispatcher)))
 
     def router_note(router: BaseRouter[Any]) -> str:
         names = ", ".join(m.__name__ for m in router.middlewares)
@@ -108,13 +107,10 @@ def build_tree(
 
             counts["handlers"] += 1
             notes: list[str] = []
-            if handler_above := catch_all.get(item.update_field):
+            # Номер в порядке проверки: обход тот же, что у iter_handlers.
+            if reason := reasons.get(counts["handlers"] - 1):
                 counts["warnings"] += 1
-                notes.append(
-                    f"! недостижим: выше {handler_above} без фильтра ловит всё этого вида"
-                )
-            if item.query is None:
-                catch_all.setdefault(item.update_field, item.__name__)
+                notes.append(f"! недостижим: {reason}")
             if verbose:
                 if overrides := _overrides(item):
                     notes.append("переопределено: " + ", ".join(overrides))

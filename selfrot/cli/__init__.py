@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .. import __version__
 from .add import add_router
+from .check import plural, run_check
 from .init import InitError, init_project
 from .tree import build_tree, load_dispatcher, render
 
@@ -98,6 +99,38 @@ def _cmd_tree(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_check(args: argparse.Namespace) -> int:
+    try:
+        report = run_check(Path.cwd(), args.package, args.target)
+    except InitError as error:
+        print(f"Ошибка: {error}", file=sys.stderr)
+        return 1
+
+    print(
+        f"Проверка {args.package}: модулей {report.modules}, "
+        f"роутеров {report.routers}, хендлеров {report.handlers}."
+    )
+    for problem in report.problems:
+        label = "ошибка" if problem.level == "error" else "предупреждение"
+        print(f"{label}: {problem.where}: {problem.message}")
+        if args.verbose and problem.details:
+            print(problem.details.rstrip())
+
+    errors, warnings = len(report.errors), len(report.warnings)
+    if not report.problems:
+        print("Проблем не найдено.")
+    else:
+        print(
+            "Итог: "
+            + plural(errors, "ошибка", "ошибки", "ошибок")
+            + ", "
+            + plural(warnings, "предупреждение", "предупреждения", "предупреждений")
+            + "."
+        )
+
+    return 1 if errors or (args.strict and warnings) else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="selfrot", description="Инструменты selfrotgram."
@@ -155,6 +188,32 @@ def build_parser() -> argparse.ArgumentParser:
         "--ascii", action="store_true", help="рисовать ветки обычными символами"
     )
     tree.set_defaults(handler=_cmd_tree)
+
+    check = commands.add_parser(
+        "check",
+        help="проверить проект: ошибки описания и забытые подключения",
+        description=(
+            "Импортирует каждый модуль пакета (ошибки собираются все, а не только первая), "
+            "собирает диспетчер и ищет то, что при запуске не видно: хендлер или роутер, "
+            "который нигде не подключён, недостижимые хендлеры, один и тот же хендлер "
+            "в двух местах. Ошибки дают код выхода 1; предупреждения только с --strict."
+        ),
+    )
+    check.add_argument(
+        "target",
+        nargs="?",
+        help="модуль:класс диспетчера (по умолчанию <пакет>.__main__:Dispatcher)",
+    )
+    check.add_argument(
+        "--package", default="src/bot", help="путь пакета бота (по умолчанию src/bot)"
+    )
+    check.add_argument(
+        "--strict", action="store_true", help="считать предупреждения ошибками (для CI)"
+    )
+    check.add_argument(
+        "-v", "--verbose", action="store_true", help="показать трейсбеки ошибок импорта"
+    )
+    check.set_defaults(handler=_cmd_check)
 
     add = commands.add_parser("add", help="добавить в проект новую часть")
     kinds = add.add_subparsers(dest="kind", required=True)

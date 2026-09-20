@@ -194,6 +194,30 @@ class TestBuildTree:
         assert "callback_query" in "\n".join(lines(Buttons(token="1:T")))
 
 
+class TestSameFilter:
+    def test_same_builtin_filter_is_unreachable(self):
+        class First(MessageHandler[BaseContext[TextMessage]]):
+            query = Command("ban")
+
+            async def handle(self): ...
+
+        class Second(MessageHandler[BaseContext[TextMessage]]):
+            query = Command("ban")
+
+            async def handle(self): ...
+
+        class Two(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+            handlers = (First, Second)
+
+        text = lines(Two(token="1:T"))
+        assert "недостижим: выше First тот же фильтр Command('ban')" in next(
+            t for t in text if "Second" in t
+        )
+        assert "недостижим" not in next(t for t in text if "First" in t)
+
+
 class TestFilterReprs:
     def test_command(self):
         assert repr(Command("calc", Args)) == "Command('calc', Args)"
