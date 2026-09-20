@@ -32,18 +32,6 @@ def tree(root: Path) -> set[str]:
     return {str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()}
 
 
-@pytest.fixture
-def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Пустая папка проекта; импорты сгенерированного кода не оседают между тестами."""
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.syspath_prepend(str(tmp_path))
-    before = set(sys.modules)
-    yield tmp_path
-    for name in set(sys.modules) - before:
-        if name.split(".")[0] in {"src", "app", "mybot"}:
-            del sys.modules[name]
-
-
 class TestInit:
     def test_creates_the_agreed_tree_and_nothing_else(self, project):
         result = init_project(project)

@@ -5,7 +5,9 @@
 
 import inspect
 import json
+import sys
 from collections.abc import AsyncIterator, Callable
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -162,3 +164,15 @@ def callback_update(
 def bind(raw: dict[str, Any], api: Bot | None) -> Update:
     """Разобрать апдейт так, как это делает Bot/вебхук: объекты знают своего бота."""
     return TypeAdapter(Update).validate_python(raw, context={"bot": api})
+
+
+@pytest.fixture
+def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Пустая папка проекта; импорты сгенерированного кода не оседают между тестами."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    before = set(sys.modules)
+    yield tmp_path
+    for name in set(sys.modules) - before:
+        if name.split(".")[0] in {"src", "app", "mybot"}:
+            del sys.modules[name]

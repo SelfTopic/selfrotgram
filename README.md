@@ -102,6 +102,14 @@ src/bot/
   keyboards/  middlewares/  filters/     пустые места под ваш код
 ```
 
+Новый роутер: `selfrot add router` создаёт его и подключает в `RootRouter`:
+
+```bash
+selfrot add router profile            # routers/profile.py с примером хендлера
+selfrot add router profile --module   # папка routers/profile/ с пустым роутером в __init__.py,
+                                      # готовым принимать хендлеры из соседних модулей
+```
+
 Создаётся только то, что касается самой библиотеки. Сервисы, база данных и структура бизнес-логики
 остаются вашим делом. Существующие файлы команда **никогда не перезаписывает**. Запуск:
 `BOT_TOKEN=... python -m src.bot`.

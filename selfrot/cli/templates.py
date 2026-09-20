@@ -118,16 +118,20 @@ from selfrot import BaseRouter
 
 from ..context import AppContext
 from .start import StartRouter
+# selfrot: imports  (сюда `selfrot add router` добавляет импорты)
 
 
 class RootRouter(BaseRouter[AppContext]):
     """
-    Корневой роутер: сюда подключаются все остальные. Новый роутер: положить модуль
-    рядом (routers/profile.py), импортировать и добавить в кортеж. Порядок важен:
-    апдейт достаётся первому подошедшему хендлеру.
+    Корневой роутер: сюда подключаются все остальные. Новый: `selfrot add router имя`
+    или вручную (модуль рядом, импорт и строка в кортеж). Порядок важен: апдейт
+    достаётся первому подошедшему хендлеру.
     """
 
-    routers = (StartRouter,)
+    routers = (
+        StartRouter,
+        # selfrot: routers  (сюда `selfrot add router` добавляет роутеры)
+    )
     # Вместо импортов можно перечислить модули с переменной router:
     # auto_connect = (".start",)
 '''
@@ -165,3 +169,42 @@ def package_files() -> dict[str, str]:
         "middlewares/__init__.py": "",
         "filters/__init__.py": "",
     }
+
+
+ROUTER_FILE = """\
+from selfrot import BaseRouter, MessageHandler
+from selfrot.filter import Command
+from selfrot.types import TextMessage
+
+from ..context import AppContext
+
+
+class {handler}(MessageHandler[AppContext[TextMessage]]):
+    query = Command("{name}")
+
+    async def handle(self) -> None:
+        await self.ctx.message.answer("Роутер {name} подключён.")
+
+
+class {router}(BaseRouter[AppContext]):
+    handlers = ({handler},)
+"""
+
+# Папка вместо файла: пустой роутер, готовый принимать хендлеры из соседних модулей.
+# Модуль пакета глубже на уровень, поэтому context берётся тремя точками.
+ROUTER_PACKAGE = '''\
+from selfrot import BaseRouter
+
+from ...context import AppContext
+
+# Хендлеры лежат в модулях рядом (routers/{name}/commands.py) и подключаются так:
+#   from .commands import Ping
+#   handlers = (Ping,)
+# В самих хендлерах context импортируется тремя точками: from ...context import AppContext
+
+
+class {router}(BaseRouter[AppContext]):
+    """Роутер {name}: сюда добавляются хендлеры."""
+
+    handlers = ()
+'''
