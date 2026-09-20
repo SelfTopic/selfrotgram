@@ -6,6 +6,7 @@ from pathlib import Path
 from .. import __version__
 from .add import add_router
 from .init import InitError, init_project
+from .tree import build_tree, load_dispatcher, render
 
 
 def _relative(path: Path, root: Path) -> str:
@@ -80,6 +81,23 @@ def _cmd_add_router(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_tree(args: argparse.Namespace) -> int:
+    root = Path.cwd()
+    target = args.target or ".".join(Path(args.package).parts) + ".__main__:Dispatcher"
+    try:
+        dispatcher = load_dispatcher(target, root)
+    except InitError as error:
+        print(f"Ошибка: {error}", file=sys.stderr)
+        return 1
+
+    tree = build_tree(dispatcher, verbose=args.verbose, ascii_only=args.ascii)
+    try:
+        print(render(tree))
+    except UnicodeEncodeError:
+        print(render(build_tree(dispatcher, verbose=args.verbose, ascii_only=True)))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="selfrot", description="Инструменты selfrotgram."
@@ -108,6 +126,35 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="только показать, что будет создано"
     )
     init.set_defaults(handler=_cmd_init)
+
+    tree = commands.add_parser(
+        "tree",
+        help="показать роутеры, хендлеры и их фильтры",
+        description=(
+            "Строит диспетчер проекта (без сети и токена) и печатает дерево: роутеры с их "
+            "мидлварями, хендлеры с видом апдейта, обещанным типом и фильтром. Сверху вниз "
+            "это порядок проверки: побеждает первый подошедший хендлер. Хендлер без фильтра "
+            "ловит всё своего вида, и последующие того же вида помечаются как недостижимые."
+        ),
+    )
+    tree.add_argument(
+        "target",
+        nargs="?",
+        help="модуль:класс диспетчера (по умолчанию <пакет>.__main__:Dispatcher)",
+    )
+    tree.add_argument(
+        "--package", default="src/bot", help="путь пакета бота (по умолчанию src/bot)"
+    )
+    tree.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="добавить переопределённые методы и описания",
+    )
+    tree.add_argument(
+        "--ascii", action="store_true", help="рисовать ветки обычными символами"
+    )
+    tree.set_defaults(handler=_cmd_tree)
 
     add = commands.add_parser("add", help="добавить в проект новую часть")
     kinds = add.add_subparsers(dest="kind", required=True)

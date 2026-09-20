@@ -110,6 +110,27 @@ selfrot add router profile --module   # папка routers/profile/ с пуст�
                                       # готовым принимать хендлеры из соседних модулей
 ```
 
+Что уже есть в проекте, показывает `selfrot tree`: роутеры с мидлварями, хендлеры с видом
+апдейта, обещанным типом и фильтром (сверху вниз это порядок проверки):
+
+```
+$ selfrot tree
+Dispatcher  (мидлвари: LoggingMiddleware)
+└─ RootRouter
+   ├─ StartRouter
+   │  └─ Start     message: TextMessage            Command('start')
+   └─ AdminRouter  (мидлвари: OnlyAdmins)
+      ├─ BanUser   message: TextMessage            (FromUser(1, 2) & Command('ban', Ban))
+      ├─ Anything  message                         без фильтра: ловит всё этого вида
+      ├─ Never     message: TextMessage            HasText()  ! недостижим: выше Anything ...
+      └─ Joined    chat_member: ChatMemberUpdated  MemberJoined()
+
+Роутеров: 3 (без корня), хендлеров: 4. allowed_updates: chat_member, message
+```
+
+Хендлер без фильтра ловит всё своего вида, и следующие за ним того же вида команда помечает как
+недостижимые. Флаги: `-v` (переопределённые методы и описания), `--ascii`, `--package`.
+
 Создаётся только то, что касается самой библиотеки. Сервисы, база данных и структура бизнес-логики
 остаются вашим делом. Существующие файлы команда **никогда не перезаписывает**. Запуск:
 `BOT_TOKEN=... python -m src.bot`.

@@ -37,7 +37,8 @@ class Compare(StringFilter):
         return text.casefold() if self.ignore_case else text
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}({self.value!r})"
+        extra = ", ignore_case=True" if self.ignore_case else ""
+        return f"{type(self).__name__}({self.value!r}{extra})"
 
 
 class Equals(Compare):
@@ -94,4 +95,5 @@ class Regexp(StringFilter):
         return found
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}({self.pattern.pattern!r})"
+        extra = ", full=True" if self.full else ""
+        return f"{type(self).__name__}({self.pattern.pattern!r}{extra})"

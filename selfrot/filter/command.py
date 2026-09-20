@@ -225,7 +225,18 @@ class Command(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):
         return cast(TParsed, self._bind(call, self.args_model))
 
     def __repr__(self) -> str:
-        return f"Command({self.name!r})"
+        parts = [repr(self.name)]
+        if self.args_model is not None:
+            parts.append(self.args_model.__name__)
+        if self.args_count is not None:
+            parts.append(f"args_count={self.args_count}")
+        if self.strict:
+            parts.append("strict=True")
+        if self.prefixes != ("/",):
+            parts.append(f"prefixes={''.join(self.prefixes)!r}")
+        if self.ignore_case:
+            parts.append("ignore_case=True")
+        return f"Command({', '.join(parts)})"
 
 
 _READABLE = {
