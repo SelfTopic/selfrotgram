@@ -1,12 +1,14 @@
 # selfrotgram
 
+[![CI](https://github.com/SelfTopic/selfrotgram/actions/workflows/ci.yml/badge.svg)](https://github.com/SelfTopic/selfrotgram/actions/workflows/ci.yml)
+
 Асинхронная библиотека для Telegram Bot API на `aiohttp` и `pydantic`, где **типы говорят
 правду**: если хендлер обещает, что у сообщения есть текст, то фильтр это проверил, а
 `message.text` в редакторе это `str`, а не `str | None`. Без `assert`, без `cast`, без
 скрытых аргументов.
 
 > Статус: альфа. Работает на реальном боте, покрыта тестами (200+), но API ещё может
-> меняться. Поддерживает Bot API 10.3. Нужен Python 3.11+.
+> меняться. Поддерживает Bot API 10.3. Python 3.11, 3.12 и 3.13 (проверяется в CI).
 
 ```python
 class Echo(MessageHandler[BaseContext[TextMessage]]):    # обещаю: у сообщения есть текст
@@ -195,6 +197,9 @@ python -m examples.echo_bot                 # живой запуск приме
 python scripts/generate_types.py            # перегенерировать типы и методы из scripts/spec
 python scripts/generate_types.py --fetch    # скачать свежую спецификацию
 ```
+
+На каждый пуш и pull request GitHub Actions запускает тесты на Python 3.11–3.13, проверку
+типов (`pyright`), актуальность сгенерированного кода и установку пакета с командой `selfrot`.
 
 Тесты не ходят в Telegram: `tests/conftest.py` поднимает на localhost фейковый сервер Bot API,
 записывающий все вызовы. Каждый пример из `examples/` дополнительно собирается в диспетчер в
