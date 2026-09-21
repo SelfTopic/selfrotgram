@@ -9,6 +9,7 @@ from .callback import CallbackDataEndswith as CallbackDataEndswith
 from .callback import CallbackDataRegexp as CallbackDataRegexp
 from .callback import CallbackDataStartswith as CallbackDataStartswith
 from .callback import CallbackPayloadFilter as CallbackPayloadFilter
+from .command import AnyCommand as AnyCommand
 from .command import Command as Command
 from .command import CommandCall as CommandCall
 from .has import *

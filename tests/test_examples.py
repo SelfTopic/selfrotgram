@@ -108,6 +108,10 @@ async def test_data_parsed_bot_answers_and_explains_mistakes(telegram):
         "/say 2 привет  мир",
         "/say",
         "/say x",
+        "/transfer @vasya 100",
+        "Кинуть @vasya 5",
+        "перевести @vasya",
+        "/перевести @vasya 1",
     ]:
         await feed(dp, message_update(text))
 
@@ -122,6 +126,10 @@ async def test_data_parsed_bot_answers_and_explains_mistakes(telegram):
     assert answers[4] == "привет  мир\nпривет  мир"
     assert answers[5] == "Что сказать?"
     assert answers[6].endswith("Нужно: /say [times] [text...]")
+    assert answers[7] == "Переведено 100 для @vasya (transfer)"
+    assert answers[8] == "Переведено 5 для @vasya (кинуть)"  # регистр не важен
+    assert answers[9].endswith("Нужно: перевести <to> <amount>")  # слово, которым позвали
+    assert len(answers) == 10  # «/перевести» с префиксом не подходит: тишина
     await dp.api.close_session()
 
 

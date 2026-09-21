@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..filter.base import AndFilter, BaseFilter, NotFilter, OrFilter
+from ..filter.command import AnyCommand
 from ..handlers.base import BaseHandler
 from ..router.base import BaseRouter
 
@@ -50,6 +51,9 @@ def same_filter(a: BaseFilter[Any], b: BaseFilter[Any]) -> bool:
         or repr(a) != repr(b)
     ):
         return False
+
+    if isinstance(a, AnyCommand) and isinstance(b, AnyCommand):
+        return all(same_filter(x, y) for x, y in zip(a.commands, b.commands, strict=True))
 
     # Имя класса в repr не различает одноимённые классы из разных модулей.
     for attr in ("payload", "args_model"):

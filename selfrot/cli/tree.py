@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..filter.base import AndFilter, BaseFilter, NotFilter, OrFilter
+from ..filter.command import AnyCommand
 from ..handlers.base import BaseHandler, _header_payload_type
 from ..router.base import BaseRouter
 from .analysis import iter_handlers, unreachable
@@ -18,8 +20,9 @@ _OVERRIDES = ("pre_handle", "after_handle", "on_error")
 class Row:
     left: str  # ветки дерева и имя
     kind: str = ""
-    filter: str = ""
+    filter: str = ""  # может быть в несколько строк (AnyCommand)
     note: str = ""
+    cont: str = ""  # ветки дерева для продолжения фильтра на следующих строках
 
 
 @dataclass
@@ -56,9 +59,23 @@ def load_dispatcher(target: str, root: Path) -> BaseRouter[Any]:
         ) from error
 
 
+def _pretty(query: BaseFilter[Any]) -> str:
+    """repr, но AnyCommand раскладывается по строкам так же, как пишется в коде."""
+    if isinstance(query, AnyCommand):
+        members = "".join(f"    {command!r},\n" for command in query.commands)
+        return f"AnyCommand(\n{members})"
+    if isinstance(query, (AndFilter, OrFilter)):
+        sign = "&" if isinstance(query, AndFilter) else "|"
+        return f"({_pretty(query.left)} {sign} {_pretty(query.right)})"
+    if isinstance(query, NotFilter):
+        return f"~{_pretty(query.inner)}"
+
+    return repr(query)
+
+
 def _filter_text(handler: type[BaseHandler[Any]]) -> str:
     query = handler.query
-    return repr(query) if query is not None else "без фильтра: ловит всё этого вида"
+    return _pretty(query) if query is not None else "без фильтра: ловит всё этого вида"
 
 
 def _kind_text(handler: type[BaseHandler[Any]]) -> str:
@@ -123,6 +140,7 @@ def build_tree(
                     _kind_text(item),
                     _filter_text(item),
                     "  ".join(notes),
+                    next_prefix,
                 )
             )
 
@@ -140,10 +158,16 @@ def render(tree: Tree) -> str:
     lines = []
     for row in tree.rows:
         if row.kind:
-            line = f"{row.left.ljust(left_width)}  {row.kind.ljust(kind_width)}  {row.filter}"
-            line += f"  {row.note}" if row.note else ""
-        else:
-            line = row.left + (f"  ({row.note})" if row.note else "")
+            head = f"{row.left.ljust(left_width)}  {row.kind.ljust(kind_width)}  "
+            first, *rest = row.filter.split("\n")
+            # Продолжение фильтра идёт под ним; слева остаются только ветки дерева.
+            lines.append((head + first).rstrip())
+            lines += [(row.cont.ljust(len(head)) + line).rstrip() for line in rest]
+            if row.note:
+                lines[-1] += f"  {row.note}"
+            continue
+
+        line = row.left + (f"  ({row.note})" if row.note else "")
         lines.append(line.rstrip())
 
     updates = ", ".join(tree.update_types) or "нет"
