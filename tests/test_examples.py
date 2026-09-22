@@ -16,6 +16,7 @@ EXAMPLES = [  # у каждого есть хендлеры
     ("examples.chat_members", "Dispatcher", None),
     ("examples.fsm_bot", "Dispatcher", None),
     ("examples.data_parsed_bot", "Dispatcher", None),
+    ("examples.reply_bot", "Dispatcher", None),
     ("examples.deferred_bot", "Dispatcher", None),
     ("examples.webhook_bot", "Dispatcher", None),
     ("examples.db_bot", "Dispatcher", "sqlalchemy"),
@@ -122,6 +123,73 @@ async def test_data_parsed_bot_answers_and_explains_mistakes(telegram):
     assert answers[4] == "привет  мир\nпривет  мир"
     assert answers[5] == "Что сказать?"
     assert answers[6].endswith("Нужно: /say [times] [text...]")
+    await dp.api.close_session()
+
+
+async def test_reply_bot_every_command(telegram):
+    from examples.reply_bot import HELP, Dispatcher
+
+    from .conftest import REPLY_SAMPLES, reply_update
+
+    hint = "Не то сообщение для этой команды.\n\n" + HELP
+    user = REPLY_SAMPLES["user"]["from"]
+    bold = {"type": "bold", "offset": 0, "length": 1}
+    italic = {"type": "italic", "offset": 2, "length": 1}
+    file = {"file_id": "a", "file_unique_id": "b"}
+    small = {**file, "width": 10, "height": 10}
+    big = {**file, "width": 100, "height": 50}
+
+    cases = [
+        # 1. готовое условие
+        ("/warn флуд", {"from": user}, "Предупреждение: Петя (id 99), флуд"),
+        ("/warn", {"from": user}, "Предупреждение: Петя (id 99), без причины"),
+        ("/warn", {"from": {**user, "id": 5, "is_bot": True}}, "Ботов не предупреждаем."),
+        ("/warn флуд", {}, hint),  # ответ есть, автора нет
+        ("/warn флуд", None, hint),  # не ответ
+        ("/text", {"text": "раз два три"}, "Символов: 11, слов: 3."),
+        ("/text", REPLY_SAMPLES["sticker"], hint),  # ответ не на текст
+        ("/entities", {"text": "a b c", "entities": [bold, bold, italic]}, "В тексте: bold: 2, italic: 1."),
+        ("/entities", {"caption": "x", "caption_entities": [italic]}, "В подписи: italic: 1."),
+        ("/entities", {"text": "без форматирования"}, hint),
+        (
+            "/sticker",
+            {"sticker": {**REPLY_SAMPLES["sticker"]["sticker"], "emoji": "😀", "set_name": "cats"}},
+            "Стикер 😀 из набора cats.",
+        ),
+        ("/sticker", REPLY_SAMPLES["sticker"], "Стикер ? из набора без имени."),
+        (
+            "/file",
+            {"document": {**file, "file_name": "a.pdf", "mime_type": "application/pdf", "file_size": 2048}},
+            "Файл a.pdf, application/pdf, 2.0 КБ.",
+        ),
+        ("/file", REPLY_SAMPLES["document"], "Файл без имени, ?, ?."),
+        # 2. несколько условий сразу
+        ("/photo", {"photo": [small, big], "from": user}, "Фото 100x50 от Петя."),
+        ("/photo", {"photo": [small]}, hint),  # фото есть, автора нет
+        ("/caption", {"photo": [small, big], "caption": "закат"}, "Подпись: закат. Размеров фото: 2."),
+        ("/caption", {"photo": [small]}, hint),  # подписи нет
+        # 3. любое из и обычный if
+        ("/duration", REPLY_SAMPLES["voice"], "Длится 1 с."),
+        ("/duration", {"video_note": {**file, "length": 1, "duration": 3}}, "Длится 3 с."),
+        ("/duration", {"animation": {**file, "width": 1, "height": 1, "duration": 9}}, "Длится 9 с."),
+        ("/duration", {"text": "текст"}, hint),
+        ("/who", {"from": user}, "Это Петя (id 99)."),
+        ("/who", {}, "Автор неизвестен (сообщение из канала или анонимное)."),
+        ("/who", None, "Ответьте командой на чьё-нибудь сообщение."),
+        # 4. подсказки
+        ("/help", None, HELP),
+        ("/start", None, HELP),
+    ]
+
+    dp = Dispatcher(token="123456:TEST-token")
+    for text, replied, expected in cases:
+        telegram.clear()
+        await feed(dp, reply_update(text, replied))
+        assert [m["text"] for m in telegram.sent] == [expected], (text, replied)
+
+    telegram.clear()
+    await feed(dp, reply_update("просто текст", REPLY_SAMPLES["text"]))
+    assert telegram.sent == []  # обычный текст боту не интересен
     await dp.api.close_session()
 
 

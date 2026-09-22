@@ -141,6 +141,50 @@ def message_update(
     return {"update_id": 1, "message": message}
 
 
+FILE = {"file_id": "a", "file_unique_id": "b"}
+ENTITIES = [{"type": "bold", "offset": 0, "length": 1}]
+
+# Как выглядит сообщение, на которое ответили, для каждого готового условия над ответом
+# (те, что перечислены в REPLY_ATTRS генератора).
+REPLY_SAMPLES: dict[str, dict[str, Any]] = {
+    "user": {"from": {"id": 99, "is_bot": False, "first_name": "Петя"}},
+    "text": {"text": "привет"},
+    "entities": {"entities": ENTITIES},
+    "caption": {"caption": "подпись"},
+    "caption_entities": {"caption_entities": ENTITIES},
+    "photo": {"photo": [{**FILE, "width": 1, "height": 1}]},
+    "animation": {"animation": {**FILE, "width": 1, "height": 1, "duration": 1}},
+    "audio": {"audio": {**FILE, "duration": 1}},
+    "document": {"document": FILE},
+    "sticker": {
+        "sticker": {
+            **FILE,
+            "type": "regular",
+            "width": 1,
+            "height": 1,
+            "is_animated": False,
+            "is_video": False,
+        }
+    },
+    "video": {"video": {**FILE, "width": 1, "height": 1, "duration": 1}},
+    "video_note": {"video_note": {**FILE, "length": 1, "duration": 1}},
+    "voice": {"voice": {**FILE, "duration": 1}},
+}
+
+
+def reply_update(text: str, reply: dict[str, Any] | None, **extra: Any) -> dict[str, Any]:
+    """Сообщение text, ответом на другое (поля которого reply); reply=None: не ответ."""
+    if reply is not None:
+        extra["reply_to_message"] = {
+            "message_id": 5,
+            "date": 1,
+            "chat": {"id": 7, "type": "private", "first_name": "В"},
+            **reply,
+        }
+
+    return message_update(text, **extra)
+
+
 def callback_update(
     data: str | None, uid: int = 7, chat: int = 7, message_id: int = 44
 ) -> dict[str, Any]:

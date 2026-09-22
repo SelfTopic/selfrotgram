@@ -1514,6 +1514,149 @@ class HasMessageThreadIdMessageGenerationStopped(BaseFilter[BaseContext[MessageT
         return isinstance(event, MessageGenerationStopped) and event.message_thread_id is not None
 
 
+class HasReplyUser(BaseFilter[BaseContext[ReplyUserMessage]]):
+    """У ответа `reply_to_message` заполнено `user`. Гарантирует ReplyUserMessage."""
+
+    guarantees = ReplyUserMessage
+
+    async def check(self, ctx: BaseContext[Any]) -> bool:
+        event = ctx.event
+        reply = event.reply_to_message if isinstance(event, Message) else None
+        return reply is not None and reply.user is not None
+
+
+class HasReplyText(BaseFilter[BaseContext[ReplyTextMessage]]):
+    """У ответа `reply_to_message` заполнено `text`. Гарантирует ReplyTextMessage."""
+
+    guarantees = ReplyTextMessage
+
+    async def check(self, ctx: BaseContext[Any]) -> bool:
+        event = ctx.event
+        reply = event.reply_to_message if isinstance(event, Message) else None
+        return reply is not None and reply.text is not None
+
+
+class HasReplyEntities(BaseFilter[BaseContext[ReplyEntitiesMessage]]):
+    """У ответа `reply_to_message` заполнено `entities`. Гарантирует ReplyEntitiesMessage."""
+
+    guarantees = ReplyEntitiesMessage
+
+    async def check(self, ctx: BaseContext[Any]) -> bool:
+        event = ctx.event
+        reply = event.reply_to_message if isinstance(event, Message) else None
+        return reply is not None and reply.entities is not None
+
+
+class HasReplyCaption(BaseFilter[BaseContext[ReplyCaptionMessage]]):
+    """У ответа `reply_to_message` заполнено `caption`. Гарантирует ReplyCaptionMessage."""
+
+    guarantees = ReplyCaptionMessage
+
+    async def check(self, ctx: BaseContext[Any]) -> bool:
+        event = ctx.event
+        reply = event.reply_to_message if isinstance(event, Message) else None
+        return reply is not None and reply.caption is not None
+
+
+class HasReplyCaptionEntities(BaseFilter[BaseContext[ReplyCaptionEntitiesMessage]]):
+    """У ответа `reply_to_message` заполнено `caption_entities`. Гарантирует ReplyCaptionEntitiesMessage."""
+
+    guarantees = ReplyCaptionEntitiesMessage
+
+    async def check(self, ctx: BaseContext[Any]) -> bool:
+        event = ctx.event
+        reply = event.reply_to_message if isinstance(event, Message) else None
+        return reply is not None and reply.caption_entities is not None
+
+
+class HasReplyPhoto(BaseFilter[BaseContext[ReplyPhotoMessage]]):
+    """У ответа `reply_to_message` заполнено `photo`. Гарантирует ReplyPhotoMessage."""
+
+    guarantees = ReplyPhotoMessage
+
+    async def check(self, ctx: BaseContext[Any]) -> bool:
+        event = ctx.event
+        reply = event.reply_to_message if isinstance(event, Message) else None
+        return reply is not None and reply.photo is not None
+
+
+class HasReplyAnimation(BaseFilter[BaseContext[ReplyAnimationMessage]]):
+    """У ответа `reply_to_message` заполнено `animation`. Гарантирует ReplyAnimationMessage."""
+
+    guarantees = ReplyAnimationMessage
+
+    async def check(self, ctx: BaseContext[Any]) -> bool:
+        event = ctx.event
+        reply = event.reply_to_message if isinstance(event, Message) else None
+        return reply is not None and reply.animation is not None
+
+
+class HasReplyAudio(BaseFilter[BaseContext[ReplyAudioMessage]]):
+    """У ответа `reply_to_message` заполнено `audio`. Гарантирует ReplyAudioMessage."""
+
+    guarantees = ReplyAudioMessage
+
+    async def check(self, ctx: BaseContext[Any]) -> bool:
+        event = ctx.event
+        reply = event.reply_to_message if isinstance(event, Message) else None
+        return reply is not None and reply.audio is not None
+
+
+class HasReplyDocument(BaseFilter[BaseContext[ReplyDocumentMessage]]):
+    """У ответа `reply_to_message` заполнено `document`. Гарантирует ReplyDocumentMessage."""
+
+    guarantees = ReplyDocumentMessage
+
+    async def check(self, ctx: BaseContext[Any]) -> bool:
+        event = ctx.event
+        reply = event.reply_to_message if isinstance(event, Message) else None
+        return reply is not None and reply.document is not None
+
+
+class HasReplySticker(BaseFilter[BaseContext[ReplyStickerMessage]]):
+    """У ответа `reply_to_message` заполнено `sticker`. Гарантирует ReplyStickerMessage."""
+
+    guarantees = ReplyStickerMessage
+
+    async def check(self, ctx: BaseContext[Any]) -> bool:
+        event = ctx.event
+        reply = event.reply_to_message if isinstance(event, Message) else None
+        return reply is not None and reply.sticker is not None
+
+
+class HasReplyVideo(BaseFilter[BaseContext[ReplyVideoMessage]]):
+    """У ответа `reply_to_message` заполнено `video`. Гарантирует ReplyVideoMessage."""
+
+    guarantees = ReplyVideoMessage
+
+    async def check(self, ctx: BaseContext[Any]) -> bool:
+        event = ctx.event
+        reply = event.reply_to_message if isinstance(event, Message) else None
+        return reply is not None and reply.video is not None
+
+
+class HasReplyVideoNote(BaseFilter[BaseContext[ReplyVideoNoteMessage]]):
+    """У ответа `reply_to_message` заполнено `video_note`. Гарантирует ReplyVideoNoteMessage."""
+
+    guarantees = ReplyVideoNoteMessage
+
+    async def check(self, ctx: BaseContext[Any]) -> bool:
+        event = ctx.event
+        reply = event.reply_to_message if isinstance(event, Message) else None
+        return reply is not None and reply.video_note is not None
+
+
+class HasReplyVoice(BaseFilter[BaseContext[ReplyVoiceMessage]]):
+    """У ответа `reply_to_message` заполнено `voice`. Гарантирует ReplyVoiceMessage."""
+
+    guarantees = ReplyVoiceMessage
+
+    async def check(self, ctx: BaseContext[Any]) -> bool:
+        event = ctx.event
+        reply = event.reply_to_message if isinstance(event, Message) else None
+        return reply is not None and reply.voice is not None
+
+
 __all__ = [
     "HasActorChatMessageReactionUpdated",
     "HasAnimation",
@@ -1622,11 +1765,24 @@ __all__ = [
     "HasQuote",
     "HasReceiverUser",
     "HasRefundedPayment",
+    "HasReplyAnimation",
+    "HasReplyAudio",
+    "HasReplyCaption",
+    "HasReplyCaptionEntities",
+    "HasReplyDocument",
+    "HasReplyEntities",
     "HasReplyMarkup",
+    "HasReplyPhoto",
+    "HasReplySticker",
+    "HasReplyText",
     "HasReplyToChecklistTaskId",
     "HasReplyToMessage",
     "HasReplyToPollOptionId",
     "HasReplyToStory",
+    "HasReplyUser",
+    "HasReplyVideo",
+    "HasReplyVideoNote",
+    "HasReplyVoice",
     "HasRichMessage",
     "HasRightsBusinessConnection",
     "HasSenderBoostCount",

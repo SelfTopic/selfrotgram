@@ -20,6 +20,7 @@ BOT_TOKEN=123456:ABC python -m examples.echo_bot  # или из переменн
 | [errors_bot.py](errors_bot.py) | `on_error` на хендлере и диспетчере, свои исключения как ответы пользователю |
 | [deferred_bot.py](deferred_bot.py) | отложенные действия: `defer` (таймеры), `after_handle` (долгая часть после закрытия хендлера) |
 | [data_parsed_bot.py](data_parsed_bot.py) | аргументы команды как данные: `CommandArgs`, `Rest`, необязательные аргументы, `CommandArgsError` |
+| [reply_bot.py](reply_bot.py) | бот, который разбирает ответы на сообщения: 13 готовых условий (`ReplyUserMessage`, `HasReplyPhoto`, ...), `Reply[...]` для нескольких условий сразу, `\|` и `if`, подсказка после всех команд |
 | [keyboards_bot.py](keyboards_bot.py) | `InlineKeyboard`, `CallbackPayload`, `.filter()`, `pressed_by` |
 | [chat_members.py](chat_members.py) | `MemberJoined`, `MemberLeft` (`chat_member` и `my_chat_member`) |
 | [fsm_bot.py](fsm_bot.py) | многошаговый диалог: `States`, типизированные данные, `InState`, TTL |

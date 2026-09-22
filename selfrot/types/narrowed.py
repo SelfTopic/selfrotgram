@@ -12,14 +12,29 @@ DataCallbackQuery). Такие типы есть для Message и для каж
 который Bot API кладёт в Update. Нужны для сужения типа (cast), в
 рантайме отдельно не создаются. Комбинация гарантий одного типа —
 наследование: class PhotoCaption(PhotoMessage, CaptionMessage, frozen=True).
+
+Условие над ответом: Reply[<суженный тип ответа>], например Reply[UserMessage]
+(ниже готовые алиасы ReplyUserMessage и другие). Условия над ответом тоже
+складываются наследованием, но внутреннего типа: Reply[PhotoCaption].
 """
 from __future__ import annotations
 
-from typing import List, Literal, Union
+from typing import Generic, List, Literal, TypeVar, Union
 
 from pydantic import ConfigDict, Field
 
 from .generated import *
+
+
+TReply = TypeVar("TReply", bound=Message)
+
+
+class Reply(Message, Generic[TReply], frozen=True):
+    """Message, у которого гарантированно есть `reply_to_message` суженного типа."""
+
+    # Только для cast: в рантайме не создаётся, сборка отложена.
+    model_config = ConfigDict(defer_build=True)
+    reply_to_message: TReply = Field()
 
 
 class MessageThreadIdMessage(Message, frozen=True):
@@ -1222,7 +1237,37 @@ class MessageThreadIdMessageGenerationStopped(MessageGenerationStopped, frozen=T
     message_thread_id: int = Field()
 
 
+# Готовые условия над ответом: Reply[<суженный тип>].
+ReplyUserMessage = Reply[UserMessage]
+ReplyTextMessage = Reply[TextMessage]
+ReplyEntitiesMessage = Reply[EntitiesMessage]
+ReplyCaptionMessage = Reply[CaptionMessage]
+ReplyCaptionEntitiesMessage = Reply[CaptionEntitiesMessage]
+ReplyPhotoMessage = Reply[PhotoMessage]
+ReplyAnimationMessage = Reply[AnimationMessage]
+ReplyAudioMessage = Reply[AudioMessage]
+ReplyDocumentMessage = Reply[DocumentMessage]
+ReplyStickerMessage = Reply[StickerMessage]
+ReplyVideoMessage = Reply[VideoMessage]
+ReplyVideoNoteMessage = Reply[VideoNoteMessage]
+ReplyVoiceMessage = Reply[VoiceMessage]
+
+
 __all__ = [
+    "Reply",
+    "ReplyUserMessage",
+    "ReplyTextMessage",
+    "ReplyEntitiesMessage",
+    "ReplyCaptionMessage",
+    "ReplyCaptionEntitiesMessage",
+    "ReplyPhotoMessage",
+    "ReplyAnimationMessage",
+    "ReplyAudioMessage",
+    "ReplyDocumentMessage",
+    "ReplyStickerMessage",
+    "ReplyVideoMessage",
+    "ReplyVideoNoteMessage",
+    "ReplyVoiceMessage",
     "MessageThreadIdMessage",
     "DirectMessagesTopicMessage",
     "UserMessage",

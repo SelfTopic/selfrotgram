@@ -941,6 +941,57 @@ cmd = Command("calc", CalcArgs);  args = cmd.parse(ctx)     # CalcArgs
   подсказка, строгий режим, ошибки описания, сквозной хендлер) и pyright: `args.operator`
   выводится как `Literal[...]`, вызов с моделью и `args_count` подсвечивается в редакторе.
 
+### Вложенное сужение: условия над ответом (`Reply[T]`, `HasReply*`, `utils/narrowing.py`)
+
+Запрос автора (`.issues/double_types.py`): библиотека не сужает вложенные типы, поэтому для
+`ctx.message.reply_to_message.user.id` приходится вручную проверять поля и делать `assert`.
+
+- **`assert` не нужен, нужен `if`.** Проверено на pyright: `if reply and reply.user:` даёт
+  `int` для `reply.user.id`, в том числе через `self.ctx.message...`, после `await` и с ранним
+  `return`. Поэтому вложенное не обязано быть частью библиотеки, и в документации `if` описан
+  как законный способ, а не обходной путь.
+- **Настоящая дыра была в проверке, а не в типах.** Суженный тип для вложенного поля можно
+  написать руками, но проверка заголовка сверяла только плоские имена: заголовок с
+  `reply_to_message.user` проходил с фильтром, который смотрит лишь `reply_to_message`.
+  `required_fields` теперь возвращает пути (`reply_to_message`, `reply_to_message.user`), а
+  остальное не менялось: `Guarantee`, `&` (объединение), `|` (пересечение) работают с
+  множеством строк как раньше. Поле считается вложенным сужением, если его тип это
+  подтип типа Bot API из корня (`root_type(nested) is original`).
+- **Готовые условия, но не для всех случаев.** Для самых частых есть типы и фильтры (13 полей
+  в `REPLY_ATTRS`: `user`, `text`, `entities`, `caption`, `caption_entities`, `photo`,
+  `animation`, `audio`, `document`, `sticker`, `video`, `video_note`, `voice`), для остального
+  `if` или свой `Reply[...]`. Те же поля для самого сообщения были и раньше (`TextMessage`,
+  `HasText`, ...): не хватало только уровня ответа. Глубже нечего добавлять: Telegram не
+  заполняет `reply_to_message` у сообщения внутри `reply_to_message`. Имена: `HasReplyVideo`
+  это «у ответа есть видео», а не `HasReplyMarkup` («у сообщения есть клавиатура»):
+  схожесть случайна, так называются поля Bot API. У `CallbackQuery` и `InlineQuery` реплаев по сути нет, поэтому
+  вложенное сужение сделано только для `Message`.
+- **Один обобщённый тип, а не набор классов.** Сначала думали о `ReplyUserMessage`,
+  `ReplyPhotoMessage`, ... как о классах. Их нельзя складывать: класс с двумя базами,
+  сужающими `reply_to_message` по-разному, pyright отвергает (`define variable in incompatible
+  way`), берёт первый тип, и второе условие пропадает. Пересечения типов в Python нет, поэтому
+  несколько условий над ответом это один внутренний тип, собранный наследованием
+  (`class PhotoCaption(PhotoMessage, CaptionMessage)`), а `Reply[PhotoCaption]` кладёт его в
+  поле. `ReplyUserMessage = Reply[UserMessage]` это просто алиас. Фильтры при этом
+  складываются как раньше: `HasReplyPhoto() & HasReplyCaption()` даёт оба пути.
+  Два `Reply[...]` как базы pyright тоже отвергает: `Base classes are mutually incompatible`.
+- **Аргумент обобщения читаем из pydantic.** `get_type_hints` для `Reply[UserMessage]` отдаёт
+  неразрешённый `TypeVar`, а сам аргумент лежит в `__pydantic_generic_metadata__` (`origin`,
+  `args`, `parameters`). `_resolve` подставляет его, обходя MRO, поэтому работают и
+  `class Warn(TextMessage, ReplyUserMessage)`, и алиас как база. Это внутренний атрибут
+  pydantic: `test_pydantic_keeps_the_generic_argument_where_we_read_it` упадёт первым, если
+  устройство изменится. Весь набор проходит на pydantic 2.11.0 (нижняя граница) и 2.13.
+- **Как уже не надо.** `ReplyTo[T]` без чтения метаданных проходил pyright, но проверка при
+  импорте не видела аргумент: обещание `ReplyTo[TextMessage]` принималось с фильтром,
+  который гарантирует только `user`. Чтобы обещание можно было проверить, аргумент читается.
+- **Проверено:** 73 теста (`tests/test_nested_types.py`, сквозной в `test_examples.py`):
+  пути для алиасов, комбинации, два уровня, свой вложенный тип без обобщений, фильтры по
+  каждому полю и для другого вида события, `&` и `|`, все варианты заголовка (в том числе
+  «раньше проходило молча»), пример `reply_bot`, тип в `selfrot tree` (`Reply[PhotoCaption]`);
+  весь набор (429) на 3.11, 3.12 и 3.13; pyright на `selfrot examples scripts` без ошибок,
+  причём без обещания в заголовке пример даёт ошибки `Optional` (проверка типов настоящая).
+  Не проверялось: Pylance (только pyright 1.1.414).
+
 ### Инлайн-клавиатуры и данные кнопок (`keyboard.py`, `callback_data.py`)
 
 У `chestor_bot` клавиатуры собираются вручную (`InlineKeyboardMarkup`), а

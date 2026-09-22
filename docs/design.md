@@ -34,6 +34,13 @@ class Echo(MessageHandler[BaseContext[TextMessage]]):    # обещание: tex
 Фильтры складываются: `HasPhoto() & HasCaption()` гарантирует оба поля, `A | B` только то,
 что гарантируют обе ветки, `~A` ничего.
 
+Так же работает вложенное: у ответа на сообщение (`reply_to_message`) поля тоже необязательные.
+Для частых случаев есть готовые пары: `ReplyUserMessage` + `HasReplyUser()`, а также для `text`,
+`entities`, `caption`, `caption_entities`, `photo`, `animation`, `audio`, `document`, `sticker`,
+`video`, `video_note`, `voice`. Гарантия тогда состоит из путей, `reply_to_message.user`, и
+сверяется так же. Другое условие можно проверить обычным `if` в хендлере (редактор сужает тип
+сам) или сделать своё: `Reply[MyInner]` плюс свой фильтр.
+
 ## Путь одного апдейта
 
 ```

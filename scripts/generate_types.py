@@ -179,6 +179,43 @@ def narrowed_types(types: dict) -> list[tuple[str, str, str, dict]]:
     return result
 
 
+# Условия над ответом (reply_to_message), для которых есть готовые Reply[...] и HasReply*.
+# Любое другое условие: свой Reply[...] и свой фильтр (docs/design.md).
+# Только то, что нужно часто; остальное (опросы, локации и т. п.) это узкая логика, для неё
+# хватает if в хендлере. У самого ответа reply_to_message Telegram не заполняет, так что глубже
+# одного уровня вложенности не бывает.
+REPLY_ATTRS = (
+    "user",
+    "text",
+    "entities",
+    "caption",
+    "caption_entities",
+    "photo",
+    "animation",
+    "audio",
+    "document",
+    "sticker",
+    "video",
+    "video_note",
+    "voice",
+)
+
+
+def reply_types(types: dict) -> list[tuple[str, str, str, str]]:
+    """(алиас, внутренний тип, атрибут, фильтр): ReplyUserMessage, UserMessage, user, HasReplyUser."""
+    inner = {a: c for c, root, a, _ in narrowed_types(types) if root == "Message"}
+    taken = {c for c, *_ in narrowed_types(types)} | {"Reply"}
+    result = []
+    for attr in REPLY_ATTRS:
+        assert attr in inner, f"REPLY_ATTRS: у Message нет необязательного поля {attr}"
+        alias = f"Reply{inner[attr]}"
+        assert alias not in types and alias not in taken, f"{alias} уже занят"
+        result.append((alias, inner[attr], attr, f"HasReply{pascal(attr)}"))
+
+    assert "Reply" not in types, "Reply совпадает с типом Bot API"
+    return result
+
+
 def generate(spec: dict) -> tuple[str, str]:
     types: dict = spec["types"]
     check_names(types)
@@ -359,14 +396,29 @@ def generate(spec: dict) -> tuple[str, str]:
         "который Bot API кладёт в Update. Нужны для сужения типа (cast), в",
         "рантайме отдельно не создаются. Комбинация гарантий одного типа —",
         "наследование: class PhotoCaption(PhotoMessage, CaptionMessage, frozen=True).",
+        "",
+        "Условие над ответом: Reply[<суженный тип ответа>], например Reply[UserMessage]",
+        "(ниже готовые алиасы ReplyUserMessage и другие). Условия над ответом тоже",
+        "складываются наследованием, но внутреннего типа: Reply[PhotoCaption].",
         '"""',
         "from __future__ import annotations",
         "",
-        "from typing import List, Literal, Union",
+        "from typing import Generic, List, Literal, TypeVar, Union",
         "",
         "from pydantic import ConfigDict, Field",
         "",
         "from .generated import *",
+        "",
+        "",
+        'TReply = TypeVar("TReply", bound=Message)',
+        "",
+        "",
+        "class Reply(Message, Generic[TReply], frozen=True):",
+        '    """Message, у которого гарантированно есть `reply_to_message` суженного типа."""',
+        "",
+        "    # Только для cast: в рантайме не создаётся, сборка отложена.",
+        "    model_config = ConfigDict(defer_build=True)",
+        "    reply_to_message: TReply = Field()",
     ]
 
     narrowed_names = []
@@ -386,10 +438,16 @@ def generate(spec: dict) -> tuple[str, str]:
             f"    {attr}: {py_type(field['types'])} = Field({args})",
         ]
 
+    replies = reply_types(types)
+    narrowed += ["", "", "# Готовые условия над ответом: Reply[<суженный тип>]."]
+    narrowed += [f"{alias} = Reply[{inner}]" for alias, inner, _, _ in replies]
+
     narrowed += [
         "",
         "",
         "__all__ = [",
+        '    "Reply",',
+        *[f'    "{a}",' for a, *_ in replies],
         *[f'    "{n}",' for n in narrowed_names],
         "]",
         "",
@@ -564,6 +622,23 @@ def generate_has_filters(spec: dict) -> str:
             "    async def check(self, ctx: BaseContext[Any]) -> bool:",
             "        event = ctx.event",
             f"        return isinstance(event, {root}) and event.{attr} is not None",
+        ]
+
+    for alias, inner, attr, name in reply_types(spec["types"]):
+        assert name not in names, f"фильтр {name} сгенерирован дважды"
+        names.append(name)
+        out += [
+            "",
+            "",
+            f"class {name}(BaseFilter[BaseContext[{alias}]]):",
+            f'    """У ответа `reply_to_message` заполнено `{attr}`. Гарантирует {alias}."""',
+            "",
+            f"    guarantees = {alias}",
+            "",
+            "    async def check(self, ctx: BaseContext[Any]) -> bool:",
+            "        event = ctx.event",
+            "        reply = event.reply_to_message if isinstance(event, Message) else None",
+            f"        return reply is not None and reply.{attr} is not None",
         ]
 
     out += ["", "", "__all__ = [", *[f'    "{n}",' for n in sorted(names)], "]", ""]
