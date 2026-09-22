@@ -40,15 +40,15 @@ pip install selfrotgram
 poetry add selfrotgram
 ```
 
-Обновить: `pip install -U selfrotgram` или `poetry update selfrotgram`. Poetry запишет `^0.1.3`,
-то есть `>=0.1.3,<0.2.0`: пока версия `0.x`, ломающие изменения увеличивают минор (см.
+Обновить: `pip install -U selfrotgram` или `poetry update selfrotgram`. Poetry запишет `^0.1.4`,
+то есть `>=0.1.4,<0.2.0`: пока версия `0.x`, ломающие изменения увеличивают минор (см.
 [CHANGELOG.md](https://github.com/SelfTopic/selfrotgram/blob/main/CHANGELOG.md)).
 
 Свежий коммит, ещё не вышедший на PyPI, или закреплённый тег ставятся прямо из git:
 
 ```bash
 pip install "selfrotgram @ git+https://github.com/SelfTopic/selfrotgram.git"
-poetry add "git+https://github.com/SelfTopic/selfrotgram.git#v0.1.3"
+poetry add "git+https://github.com/SelfTopic/selfrotgram.git#v0.1.4"
 ```
 
 Ставится как `selfrotgram`, импортируется как `selfrot`. Зависимости (`aiohttp>=3.12`,
