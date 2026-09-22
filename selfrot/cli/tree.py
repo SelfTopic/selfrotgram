@@ -4,22 +4,27 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..filter.base import AndFilter, BaseFilter, NotFilter, OrFilter
+from ..filter.command import AnyCommand
 from ..handlers.base import BaseHandler, _header_payload_type
 from ..router.base import BaseRouter
-from .analysis import iter_handlers, unreachable
+from .analysis import chain, iter_handlers, unreachable
 from .init import InitError
 
 # Токен нужен только конструктору Bot, в сеть при построении дерева никто не ходит.
 DUMMY_TOKEN = "0:selfrot-tree"
 _OVERRIDES = ("pre_handle", "after_handle", "on_error")
+# Длиннее — цепочка &/| переносится на несколько строк (без учёта отступа строки в дереве).
+_MAX_INLINE = 72
 
 
 @dataclass
 class Row:
     left: str  # ветки дерева и имя
     kind: str = ""
-    filter: str = ""
+    filter: str = ""  # может быть в несколько строк (AnyCommand)
     note: str = ""
+    cont: str = ""  # ветки дерева для продолжения фильтра на следующих строках
 
 
 @dataclass
@@ -56,9 +61,49 @@ def load_dispatcher(target: str, root: Path) -> BaseRouter[Any]:
         ) from error
 
 
+def _nested(text: str) -> str:
+    """Строки блока, вложенного на один уровень глубже: каждая сдвигается ещё на 4."""
+    return text.replace("\n", "\n    ")
+
+
+def _block(items: list[str]) -> str:
+    """AnyCommand(\n    x,\n    y,\n)."""
+    body = "".join(f"    {_nested(item)},\n" for item in items)
+    return f"AnyCommand(\n{body})"
+
+
+def _combine(sign: str, parts: list[str]) -> str:
+    """
+    (a & b & c) на одной строке, а если длинно или в частях уже есть перенос — по одному
+    операнду на строку.
+    """
+    flat = f" {sign} ".join(parts)
+    if "\n" not in flat and len(flat) <= _MAX_INLINE:
+        return f"({flat})"
+
+    lines = [f"(\n    {_nested(parts[0])}"]
+    lines += [f"    {sign} {_nested(part)}" for part in parts[1:]]
+    lines.append(")")
+    return "\n".join(lines)
+
+
+def _pretty(query: BaseFilter[Any]) -> str:
+    """repr, но длинные AnyCommand и цепочки &/| раскладываются по строкам, как в коде."""
+    if isinstance(query, AnyCommand):
+        return _block([repr(command) for command in query.commands])
+    if isinstance(query, (AndFilter, OrFilter)):
+        sign = "&" if isinstance(query, AndFilter) else "|"
+        parts = [_pretty(part) for part in chain(query, type(query))]
+        return _combine(sign, parts)
+    if isinstance(query, NotFilter):
+        return f"~{_pretty(query.inner)}"
+
+    return repr(query)
+
+
 def _filter_text(handler: type[BaseHandler[Any]]) -> str:
     query = handler.query
-    return repr(query) if query is not None else "без фильтра: ловит всё этого вида"
+    return _pretty(query) if query is not None else "без фильтра: ловит всё этого вида"
 
 
 def _kind_text(handler: type[BaseHandler[Any]]) -> str:
@@ -123,6 +168,7 @@ def build_tree(
                     _kind_text(item),
                     _filter_text(item),
                     "  ".join(notes),
+                    next_prefix,
                 )
             )
 
@@ -140,10 +186,16 @@ def render(tree: Tree) -> str:
     lines = []
     for row in tree.rows:
         if row.kind:
-            line = f"{row.left.ljust(left_width)}  {row.kind.ljust(kind_width)}  {row.filter}"
-            line += f"  {row.note}" if row.note else ""
-        else:
-            line = row.left + (f"  ({row.note})" if row.note else "")
+            head = f"{row.left.ljust(left_width)}  {row.kind.ljust(kind_width)}  "
+            first, *rest = row.filter.split("\n")
+            # Продолжение фильтра идёт под ним; слева остаются только ветки дерева.
+            lines.append((head + first).rstrip())
+            lines += [(row.cont.ljust(len(head)) + line).rstrip() for line in rest]
+            if row.note:
+                lines[-1] += f"  {row.note}"
+            continue
+
+        line = row.left + (f"  ({row.note})" if row.note else "")
         lines.append(line.rstrip())
 
     updates = ", ".join(tree.update_types) or "нет"

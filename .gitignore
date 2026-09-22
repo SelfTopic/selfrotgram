@@ -15,3 +15,5 @@ build/
 .mypy_cache/
 .pytest_cache/
 *.sqlite3
+# заметки автора о проблемах, не часть проекта
+.issues/

@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -15,10 +16,20 @@ from selfrot import (
     MessageHandler,
 )
 from selfrot.cli import main
+from selfrot.cli.analysis import chain, flat_repr, same_filter
 from selfrot.cli.add import add_router
 from selfrot.cli.init import InitError, init_project
 from selfrot.cli.tree import build_tree, load_dispatcher, render
-from selfrot.filter import Command, FromUser, HasText, MemberJoined, Text, TextRegexp
+from selfrot.filter import (
+    AnyCommand,
+    Command,
+    FromUser,
+    HasText,
+    MemberJoined,
+    Text,
+    TextRegexp,
+)
+from selfrot.filter.base import OrFilter
 from selfrot.handlers import CallbackQueryHandler, ChatMemberHandler
 from selfrot.types import ChatMemberUpdated, TextMessage
 
@@ -216,6 +227,221 @@ class TestSameFilter:
             t for t in text if "Second" in t
         )
         assert "недостижим" not in next(t for t in text if "First" in t)
+
+
+class TestSameAnyCommand:
+    def test_same_group_is_unreachable(self):
+        class First(MessageHandler[BaseContext[TextMessage]]):
+            query = AnyCommand(Command("ban"), Command("бан", prefixes=""))
+
+            async def handle(self): ...
+
+        class Second(MessageHandler[BaseContext[TextMessage]]):
+            query = AnyCommand(Command("ban"), Command("бан", prefixes=""))
+
+            async def handle(self): ...
+
+        class Two(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+            handlers = (First, Second)
+
+        text = lines(Two(token="1:T"))
+        # группа занимает несколько строк, пометка стоит после закрывающей скобки
+        second = next(i for i, t in enumerate(text) if "Second" in t)
+        assert "недостижим: выше First тот же фильтр AnyCommand(" in text[second + 3]
+        assert "недостижим" not in "\n".join(text[: second + 3])
+
+    def test_same_names_of_different_models_are_not_the_same(self):
+        def make() -> AnyCommand[Any]:
+            class Args(CommandArgs):
+                n: int
+
+            return AnyCommand(Command("ban", Args))
+
+        one, other = make(), make()
+        assert repr(one) == repr(other)
+        assert not same_filter(one, other)
+        assert same_filter(one, one)
+
+
+class TestAnyCommandInTree:
+    """AnyCommand в дереве раскладывается по строкам, как пишется в коде."""
+
+    @staticmethod
+    def group() -> AnyCommand[Any]:
+        return AnyCommand(
+            Command("transfer", Args),
+            Command("перевести", Args, prefixes=""),
+        )
+
+    def dispatcher(self, ascii_only: bool = False):
+        group = self.group
+
+        class Middle(MessageHandler[BaseContext[TextMessage]]):
+            query = FromUser(7) & group()
+
+            async def handle(self): ...
+
+        class Again(MessageHandler[BaseContext[TextMessage]]):
+            query = FromUser(7) & group()
+
+            async def handle(self): ...
+
+        class Last(MessageHandler[BaseContext[TextMessage]]):
+            query = group()
+
+            async def handle(self): ...
+
+        class Two(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+            handlers = (Middle, Again, Last)
+
+        return Two(token="1:T")
+
+    def test_layout_like_in_code(self):
+        text = lines(self.dispatcher())
+        # FromUser(7) & AnyCommand(...): каждый операнд & на своей строке, AnyCommand
+        # внутри него сдвинут ещё на 4 (вложен на уровень глубже).
+        assert text[:7] == [
+            "Two",
+            "├─ Middle  message: TextMessage  (",
+            "│                                    FromUser(7)",
+            "│                                    & AnyCommand(",
+            "│                                        Command('transfer', Args),",
+            "│                                        Command('перевести', Args, prefixes=''),",
+            "│                                    )",
+        ]
+        # ветки дерева не рвутся, пока ниже есть хендлеры; у последнего их нет.
+        # Last: просто AnyCommand, без &, поэтому без внешних скобок и без лишнего отступа.
+        last = next(i for i, t in enumerate(text) if "Last" in t)
+        assert text[last : last + 4] == [
+            "└─ Last    message: TextMessage  AnyCommand(",
+            "                                     Command('transfer', Args),",
+            "                                     Command('перевести', Args, prefixes=''),",
+            "                                 )",
+        ]
+
+    def test_note_goes_after_the_closing_bracket(self):
+        text = lines(self.dispatcher())
+        again = next(i for i, t in enumerate(text) if "Again" in t)
+        closing = text[again + 6]
+        assert closing.startswith("│") and ")  ! недостижим: выше Middle" in closing
+        # причина плоская, без вложенных скобок цепочки (хотя сама AnyCommand компактна)
+        assert "тот же фильтр (FromUser(7) & AnyCommand(" in closing
+        assert "недостижим" not in "\n".join(text[:again] + text[again + 1 : again + 6])
+
+    def test_ascii_uses_ascii_branches(self):
+        text = "\n".join(lines(self.dispatcher(), ascii_only=True))
+        assert "│" not in text and "└" not in text
+        assert "|                                        Command('transfer', Args)," in text
+
+    def test_repr_of_the_filter_itself_stays_on_one_line(self):
+        assert "\n" not in repr(self.group())
+
+
+class TestLongChains:
+    """& / | это левоассоциативные цепочки; дерево не должно показывать вложенные скобки."""
+
+    def three_or(self):
+        return Command("a") | Command("b") | Command("c")
+
+    def test_chain_flattens_same_operator(self):
+        parts = chain(self.three_or(), type(self.three_or()))
+        assert [repr(p) for p in parts] == [
+            "Command('a')",
+            "Command('b')",
+            "Command('c')",
+        ]
+
+    def test_chain_stops_at_a_different_operator(self):
+        mixed = Command("a") & (Command("b") | Command("c"))
+        parts = chain(mixed, type(mixed))
+        assert len(parts) == 2
+        assert repr(parts[0]) == "Command('a')"
+        assert isinstance(parts[1], OrFilter)
+
+    def test_flat_repr_has_no_nested_parens(self):
+        assert flat_repr(self.three_or()) == "(Command('a') | Command('b') | Command('c'))"
+
+    def test_short_chain_stays_on_one_line(self):
+        class First(MessageHandler[BaseContext[TextMessage]]):
+            query = Command("help") | Command("start")
+
+            async def handle(self): ...
+
+        class Root(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+            handlers = (First,)
+
+        text = lines(Root(token="1:T"))
+        assert "(Command('help') | Command('start'))" in text[1]
+        assert len(text) == 4  # ни одной лишней строки переноса
+
+    def test_long_chain_is_one_operand_per_line(self):
+        class Hint(MessageHandler[BaseContext[TextMessage]]):
+            query = (
+                Command("warn")
+                | Command("text")
+                | Command("entities")
+                | Command("sticker")
+                | Command("file")
+                | Command("photo")
+                | Command("caption")
+                | Command("duration")
+            )
+
+            async def handle(self): ...
+
+        class Root(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+            handlers = (Hint,)
+
+        text = lines(Root(token="1:T"))
+        assert text[1] == "└─ Hint  message: TextMessage  ("
+        head = " " * (len(text[1]) - 1)  # под именем ряда, до открывающей скобки
+        indent = head + "    "  # плюс один уровень вложенности
+        assert text[2] == f"{indent}Command('warn')"
+        assert text[3] == f"{indent}| Command('text')"
+        assert text[-4] == f"{indent}| Command('duration')"
+        assert text[-3] == f"{head})"
+        assert not any(line.count("(") > 1 for line in text[:-1])  # без вложенных скобок
+
+    def test_duplicate_of_a_long_chain_gets_a_flat_reason(self):
+        def hint():
+            return (
+                Command("warn")
+                | Command("text")
+                | Command("entities")
+                | Command("sticker")
+                | Command("file")
+                | Command("photo")
+                | Command("caption")
+                | Command("duration")
+            )
+
+        class First(MessageHandler[BaseContext[TextMessage]]):
+            query = hint()
+
+            async def handle(self): ...
+
+        class Second(MessageHandler[BaseContext[TextMessage]]):
+            query = hint()
+
+            async def handle(self): ...
+
+        class Root(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+            handlers = (First, Second)
+
+        text = "\n".join(lines(Root(token="1:T")))
+        # причина недостижимости в одну строку, без вложенных скобок цепочки
+        assert "тот же фильтр (Command('warn') | Command('text') |" in text
+        assert "((Command" not in text
 
 
 class TestFilterReprs:

@@ -20,7 +20,8 @@ class CommandCall:
 
 
 TArgs = TypeVar("TArgs", bound=CommandArgs)
-TParsed = TypeVar("TParsed")
+# Ковариантный, чтобы AnyCommand с командами разных моделей давал `A | B`.
+TParsed = TypeVar("TParsed", covariant=True)
 
 
 class Command(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):
@@ -192,7 +193,8 @@ class Command(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):
         username = ctx.bot.username
         return username is not None and mention.lower() == username.lower()
 
-    async def check(self, ctx: BaseContext[Any]) -> bool:
+    def matches(self, ctx: BaseContext[Any]) -> bool:
+        """То же, что check(), но обычным вызовом: разбирается только строка сообщения."""
         call = self._parse(ctx)
         if call is None:
             return False
@@ -204,6 +206,9 @@ class Command(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):
                 return False
 
         return True
+
+    async def check(self, ctx: BaseContext[Any]) -> bool:
+        return self.matches(ctx)
 
     def call(self, ctx: BaseContext[Any]) -> CommandCall:
         """Сырой разбор: префикс, слова, остаток. Только после успешного check()."""
@@ -237,6 +242,58 @@ class Command(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):
         if self.ignore_case:
             parts.append("ignore_case=True")
         return f"Command({', '.join(parts)})"
+
+
+class AnyCommand(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):
+    """
+    Одна команда с несколькими триггерами: у каждого своё имя, префиксы и регистр.
+
+        transfer = AnyCommand(
+            Command("transfer", TransferArgs, ignore_case=True),
+            Command("перевести", TransferArgs, prefixes="", ignore_case=True),
+            Command("кинуть", TransferArgs, prefixes="", ignore_case=True),
+        )
+
+        class Transfer(MessageHandler[BaseContext[TextMessage]]):
+            query = transfer
+
+            async def handle(self):
+                args = transfer.parse(self.ctx)      # TransferArgs
+
+    Подходит, если подошла любая из команд; проверяются по порядку, побеждает первая.
+    parse(ctx) разбирает аргументы той команды, что сработала: неверные аргументы дают
+    CommandArgsError с usage именно её. find(ctx) отдаёт саму команду, если важно знать,
+    как вызвали. Модели у команд могут быть разными, тогда parse вернёт `A | B`.
+
+    `Command("a") | Command("b")` тоже сработает как фильтр, но не скажет, какая из
+    команд подошла: для parse нужна группа.
+    """
+
+    guarantees = TextMessage
+
+    def __init__(self, *commands: Command[TParsed]) -> None:
+        if not commands:
+            raise DefinitionError("AnyCommand: нужна хотя бы одна команда")
+
+        self.commands = commands
+
+    def find(self, ctx: BaseContext[Any]) -> Command[TParsed]:
+        """Первая подошедшая команда. Только после успешного check()."""
+        for command in self.commands:
+            if command.matches(ctx):
+                return command
+
+        raise FilterMatchError(f"{self!r} не подошёл к этому апдейту")
+
+    async def check(self, ctx: BaseContext[Any]) -> bool:
+        return any(command.matches(ctx) for command in self.commands)
+
+    def parse(self, ctx: BaseContext[Any]) -> TParsed:
+        """Модель аргументов сработавшей команды. Только после успешного check()."""
+        return self.find(ctx).parse(ctx)
+
+    def __repr__(self) -> str:
+        return f"AnyCommand({', '.join(repr(command) for command in self.commands)})"
 
 
 _READABLE = {
