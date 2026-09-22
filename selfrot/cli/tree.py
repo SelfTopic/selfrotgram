@@ -8,12 +8,14 @@ from ..filter.base import AndFilter, BaseFilter, NotFilter, OrFilter
 from ..filter.command import AnyCommand
 from ..handlers.base import BaseHandler, _header_payload_type
 from ..router.base import BaseRouter
-from .analysis import iter_handlers, unreachable
+from .analysis import chain, iter_handlers, unreachable
 from .init import InitError
 
 # Токен нужен только конструктору Bot, в сеть при построении дерева никто не ходит.
 DUMMY_TOKEN = "0:selfrot-tree"
 _OVERRIDES = ("pre_handle", "after_handle", "on_error")
+# Длиннее — цепочка &/| переносится на несколько строк (без учёта отступа строки в дереве).
+_MAX_INLINE = 72
 
 
 @dataclass
@@ -59,14 +61,40 @@ def load_dispatcher(target: str, root: Path) -> BaseRouter[Any]:
         ) from error
 
 
+def _nested(text: str) -> str:
+    """Строки блока, вложенного на один уровень глубже: каждая сдвигается ещё на 4."""
+    return text.replace("\n", "\n    ")
+
+
+def _block(items: list[str]) -> str:
+    """AnyCommand(\n    x,\n    y,\n)."""
+    body = "".join(f"    {_nested(item)},\n" for item in items)
+    return f"AnyCommand(\n{body})"
+
+
+def _combine(sign: str, parts: list[str]) -> str:
+    """
+    (a & b & c) на одной строке, а если длинно или в частях уже есть перенос — по одному
+    операнду на строку.
+    """
+    flat = f" {sign} ".join(parts)
+    if "\n" not in flat and len(flat) <= _MAX_INLINE:
+        return f"({flat})"
+
+    lines = [f"(\n    {_nested(parts[0])}"]
+    lines += [f"    {sign} {_nested(part)}" for part in parts[1:]]
+    lines.append(")")
+    return "\n".join(lines)
+
+
 def _pretty(query: BaseFilter[Any]) -> str:
-    """repr, но AnyCommand раскладывается по строкам так же, как пишется в коде."""
+    """repr, но длинные AnyCommand и цепочки &/| раскладываются по строкам, как в коде."""
     if isinstance(query, AnyCommand):
-        members = "".join(f"    {command!r},\n" for command in query.commands)
-        return f"AnyCommand(\n{members})"
+        return _block([repr(command) for command in query.commands])
     if isinstance(query, (AndFilter, OrFilter)):
         sign = "&" if isinstance(query, AndFilter) else "|"
-        return f"({_pretty(query.left)} {sign} {_pretty(query.right)})"
+        parts = [_pretty(part) for part in chain(query, type(query))]
+        return _combine(sign, parts)
     if isinstance(query, NotFilter):
         return f"~{_pretty(query.inner)}"
 

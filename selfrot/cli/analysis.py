@@ -30,6 +30,30 @@ def iter_routers(root: BaseRouter[Any]) -> Iterator[BaseRouter[Any]]:
         yield from iter_routers(child)
 
 
+def chain(query: BaseFilter[Any], op: type[BaseFilter[Any]]) -> list[BaseFilter[Any]]:
+    """
+    Операнды цепочки одного оператора: (a & b) & c -> [a, b, c]. `&`/`|` левоассоциативны
+    (a & b & c = (a & b) & c), поэтому без этого длинная цепочка печаталась бы вложенными
+    скобками. Останавливается на другом операторе: a & (b | c) даёт [a, (b | c)].
+    """
+    if isinstance(query, op):
+        return [*chain(query.left, op), *chain(query.right, op)]  # type: ignore[attr-defined]
+
+    return [query]
+
+
+def flat_repr(query: BaseFilter[Any]) -> str:
+    """repr без вложенных скобок цепочки: (a & b & c), а не ((a & b) & c)."""
+    if isinstance(query, (AndFilter, OrFilter)):
+        sign = "&" if isinstance(query, AndFilter) else "|"
+        parts = (flat_repr(part) for part in chain(query, type(query)))
+        return f"({f' {sign} '.join(parts)})"
+    if isinstance(query, NotFilter):
+        return f"~{flat_repr(query.inner)}"
+
+    return repr(query)
+
+
 def _faithful(query: BaseFilter[Any]) -> bool:
     """
     Можно ли по repr узнать, что делает фильтр. Встроенные фильтры печатают все свои
@@ -80,7 +104,7 @@ def unreachable(refs: list[HandlerRef]) -> dict[int, str]:
         elif handler.query is not None:
             for query, name in seen.get(kind, []):
                 if same_filter(query, handler.query):
-                    reasons[index] = f"выше {name} тот же фильтр {handler.query!r}"
+                    reasons[index] = f"выше {name} тот же фильтр {flat_repr(handler.query)}"
                     break
 
         if handler.query is None:
