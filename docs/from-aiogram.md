@@ -192,8 +192,8 @@ class DatabaseMiddleware(BaseMiddleware[AppContext]):
 - **Хранилища FSM кроме памяти:** есть интерфейс `Storage` из трёх методов, готового
   Redis-класса пока нет.
 - **Хелперы:** форматирование (`aiogram.utils.formatting`), deep-link, `ChatActionSender`,
-  скачивание файлов (`bot.download`), сборщик reply-клавиатур. Есть `html.escape` из
-  стандартной библиотеки и `InputFile` для загрузки.
+  сборщик reply-клавиатур. Есть `html.escape` из стандартной библиотеки, `InputFile` для
+  загрузки и `ctx.download`/`bot.download` для скачивания (то же имя, что в aiogram).
 - **Загрузка файлов внутри альбомов** (`attach://` для `send_media_group` с файлами).
 - Экосистема: готовые плагины, ответы на StackOverflow, обкатка на реальных нагрузках.
 

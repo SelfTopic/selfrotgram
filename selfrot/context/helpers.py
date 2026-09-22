@@ -133,3 +133,54 @@ class ContextHelpers(EventAccessors[TEvent]):
             raise ContextError(f"В этом апдейте нет {field}")
 
         return event.id
+
+    @staticmethod
+    def _media_file_id(message: Message) -> tuple[str, str | None] | None:
+        """
+        (file_id, оригинальное имя файла) медиа этого сообщения: у фото — самый большой
+        размер, иначе то, что заполнено (у Message бывает только одно из них одновременно).
+        Имя знают только animation/audio/document/video (Telegram присылает file_name —
+        как файл назывался у отправителя); у фото, стикера, кружка и голосового имени
+        не бывает вообще, там всегда None. Нет медиа — None.
+        """
+        if message.photo:
+            biggest = max(message.photo, key=lambda size: size.width * size.height)
+            return biggest.file_id, None
+        if message.animation is not None:
+            return message.animation.file_id, message.animation.file_name
+        if message.audio is not None:
+            return message.audio.file_id, message.audio.file_name
+        if message.document is not None:
+            return message.document.file_id, message.document.file_name
+        if message.sticker is not None:
+            return message.sticker.file_id, None
+        if message.video is not None:
+            return message.video.file_id, message.video.file_name
+        if message.video_note is not None:
+            return message.video_note.file_id, None
+        if message.voice is not None:
+            return message.voice.file_id, None
+
+        return None
+
+    def _downloadable_file_id(self) -> tuple[str, str | None]:
+        """
+        (file_id, оригинальное имя файла или None) медиа в апдейте: сначала само сообщение,
+        а если там ничего нет — то, на которое оно отвечает (частый случай: команда текстом
+        в ответ на файл). Ничего нет ни там, ни там — ContextError.
+        """
+        message = self._source_message()
+        if message is not None:
+            found = self._media_file_id(message)
+            if found is not None:
+                return found
+
+            if message.reply_to_message is not None:
+                found = self._media_file_id(message.reply_to_message)
+                if found is not None:
+                    return found
+
+        raise ContextError(
+            f"В этом апдейте ({type(self.event).__name__}) нет файла для скачивания "
+            "(ни у самого сообщения, ни у того, на которое оно отвечает)"
+        )

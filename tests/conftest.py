@@ -15,7 +15,7 @@ from aiohttp import web
 from pydantic import TypeAdapter
 
 from selfrot import Bot
-from selfrot.client.telegram import TELEGRAM_API
+from selfrot.client.telegram import TELEGRAM_API, TELEGRAM_FILE_API
 from selfrot.types import Update
 
 TOKEN = "123456:TEST-token"
@@ -53,12 +53,19 @@ class FakeTelegram:
             str, Callable[[dict[str, Any]], web.StreamResponse | Any]
         ] = {}
         self.url = ""
+        # file_path -> содержимое; не заведён — 404 (как у настоящего Telegram на чужой путь).
+        self._files: dict[str, bytes] = {}
+        self.downloads: list[str] = []  # file_path каждого запроса на скачивание
 
     def on(self, method: str, result: Any) -> None:
         """result — готовый ответ или функция (тело) -> ответ / web.Response (можно async)."""
         self._handlers[method] = (
             result if callable(result) else (lambda _b, r=result: r)
         )
+
+    def set_file(self, file_path: str, content: bytes) -> None:
+        """Что отдавать на скачивание file_path (см. TELEGRAM_FILE_API)."""
+        self._files[file_path] = content
 
     @property
     def sent(self) -> list[dict[str, Any]]:
@@ -90,12 +97,22 @@ class FakeTelegram:
 
         return web.json_response({"ok": True, "result": result})
 
+    async def _handle_file(self, request: web.Request) -> web.StreamResponse:
+        file_path = request.match_info["file_path"]
+        self.downloads.append(file_path)
+        content = self._files.get(file_path)
+        if content is None:
+            return web.Response(status=404, text="Not Found")
+
+        return web.Response(body=content)
+
 
 @pytest.fixture
 async def telegram(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[FakeTelegram]:
     fake = FakeTelegram()
     app = web.Application()
     app.router.add_route("*", "/bot{token}/{method}", fake._handle)
+    app.router.add_route("*", "/file/bot{token}/{file_path:.*}", fake._handle_file)
     runner = web.AppRunner(app, access_log=None)
     await runner.setup()
     site = web.TCPSite(runner, "127.0.0.1", 0)
@@ -104,6 +121,9 @@ async def telegram(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[FakeTelegra
     port = site._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
     fake.url = f"http://127.0.0.1:{port}"
     monkeypatch.setattr(TELEGRAM_API, "url", f"{fake.url}/bot{{token}}/{{method}}")
+    monkeypatch.setattr(
+        TELEGRAM_FILE_API, "url", f"{fake.url}/file/bot{{token}}/{{file_path}}"
+    )
 
     yield fake
     await runner.cleanup()

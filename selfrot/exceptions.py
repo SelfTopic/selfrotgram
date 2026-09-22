@@ -89,6 +89,13 @@ class BotNotBoundError(SelfrotError, RuntimeError):
     """
 
 
+class FileNotAvailableError(SelfrotError, RuntimeError):
+    """
+    getFile не вернул file_path, хотя в Bot API это поле формально Optional и на
+    больших файлах, недоступных боту (например, старше 20 МБ), тоже. Скачать нечего.
+    """
+
+
 class FilterMatchError(SelfrotError, LookupError):
     """Разбор результата фильтра (match, parse) вызван без успешного check()."""
 

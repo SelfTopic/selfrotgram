@@ -3,10 +3,10 @@ from typing import Any
 
 import aiohttp
 
-from ..exceptions import TelegramNetworkError, TelegramTimeout
+from ..exceptions import TelegramAPIError, TelegramNetworkError, TelegramTimeout
 from ..methods.base import TelegramMethod
 from ..types import InputFile
-from .telegram import TELEGRAM_API
+from .telegram import TELEGRAM_API, TELEGRAM_FILE_API
 
 
 async def _multipart(payload: dict[str, Any]) -> aiohttp.FormData:
@@ -73,6 +73,38 @@ class AsyncSession:
 
         return self.timeout
 
+    def _redact(self, text: str, token: str) -> str:
+        # в str(исключения aiohttp) и в цепочке причин лежит URL с токеном (и прокси).
+        text = text.replace(token, "<token>")
+        return text.replace(self.proxy, "<proxy>") if self.proxy else text
+
+    async def download(self, file_path: str, token: str) -> bytes:
+        """GET по отдельному URL (не через call/JSON): TELEGRAM_FILE_API, не TELEGRAM_API."""
+        session = await self.create_session()
+        url = TELEGRAM_FILE_API.get_url(token=token, file_path=file_path)
+        timeout = aiohttp.ClientTimeout(
+            total=self.timeout, sock_connect=self.connect_timeout
+        )
+
+        try:
+            async with session.get(url, timeout=timeout, proxy=self.proxy) as response:
+                status = response.status
+                body = await response.read()
+        except TimeoutError:
+            raise TelegramTimeout(
+                "downloadFile", f"нет ответа за {self.timeout:g} с"
+            ) from None
+        except aiohttp.ClientError as e:
+            reason = self._redact(f"{type(e).__name__}: {e}", token)
+            raise TelegramNetworkError("downloadFile", reason) from None
+
+        if status != 200:
+            # Не JSON Bot API, а статика: тело — как повезёт (HTML, обычно пустое).
+            text = body.decode("utf-8", errors="replace")[:200]
+            raise TelegramAPIError("downloadFile", status, text)
+
+        return body
+
     async def __call__(self, method: TelegramMethod[Any], token: str) -> dict[str, Any]:
         session = await self.create_session()
         url = TELEGRAM_API.get_url(token=token, method=method)
@@ -103,10 +135,7 @@ class AsyncSession:
                 method.__api_method__, f"нет ответа за {total:g} с"
             ) from None
         except aiohttp.ClientError as e:
-            # from None и замена токена: в str(e) и в цепочке причин лежит URL с токеном.
-            reason = f"{type(e).__name__}: {e}".replace(token, "<token>")
-            if self.proxy:
-                reason = reason.replace(self.proxy, "<proxy>")
+            reason = self._redact(f"{type(e).__name__}: {e}", token)
             raise TelegramNetworkError(method.__api_method__, reason) from None
 
         try:

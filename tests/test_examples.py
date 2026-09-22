@@ -17,6 +17,7 @@ EXAMPLES = [  # у каждого есть хендлеры
     ("examples.fsm_bot", "Dispatcher", None),
     ("examples.data_parsed_bot", "Dispatcher", None),
     ("examples.reply_bot", "Dispatcher", None),
+    ("examples.download_bot", "Dispatcher", None),
     ("examples.deferred_bot", "Dispatcher", None),
     ("examples.webhook_bot", "Dispatcher", None),
     ("examples.db_bot", "Dispatcher", "sqlalchemy"),
@@ -198,6 +199,65 @@ async def test_reply_bot_every_command(telegram):
     telegram.clear()
     await feed(dp, reply_update("просто текст", REPLY_SAMPLES["text"]))
     assert telegram.sent == []  # обычный текст боту не интересен
+    await dp.api.close_session()
+
+
+async def test_download_bot_saves_and_resaves(telegram, monkeypatch, tmp_path):
+    from aiohttp import web
+
+    from examples.download_bot import Dispatcher
+
+    from .conftest import message_update
+
+    monkeypatch.chdir(tmp_path)  # downloads/ создаётся рядом с процессом
+    telegram.on(
+        "getFile", {"file_id": "F", "file_unique_id": "U", "file_path": "docs/a.pdf"}
+    )
+    telegram.set_file("docs/a.pdf", b"pdf-content")
+
+    dp = Dispatcher(token="123456:TEST-token")
+
+    await feed(dp, message_update("/save"))  # ни файла, ни ответа на файл
+    assert telegram.sent[-1]["text"].startswith("Пришлите файл")
+    assert list((tmp_path / "downloads").iterdir()) == []  # папка есть, файла — нет
+
+    await feed(
+        dp,
+        message_update(
+            "/save", document={"file_id": "F", "file_unique_id": "U"}
+        ),
+    )
+    assert telegram.sent[-1]["text"] == "Сохранил 11 байт в downloads/1.pdf."
+    assert (tmp_path / "downloads" / "1.pdf").read_bytes() == b"pdf-content"
+
+    # /save со своим именем: overwrite=False, второй раз с тем же именем не затирает первый.
+    for expected in ("downloads/report.pdf", "downloads/report (1).pdf"):
+        await feed(
+            dp,
+            message_update(
+                "/save report", document={"file_id": "F", "file_unique_id": "U"}
+            ),
+        )
+        assert telegram.sent[-1]["text"] == f"Сохранил 11 байт в {expected}."
+    assert {p.name for p in (tmp_path / "downloads").iterdir()} == {
+        "1.pdf",
+        "report.pdf",
+        "report (1).pdf",
+    }
+
+    await feed(dp, message_update("/resave F"))
+    assert telegram.sent[-1]["text"] == "Сохранил 11 байт в downloads/resaved-1.pdf."
+    assert (tmp_path / "downloads" / "resaved-1.pdf").read_bytes() == b"pdf-content"
+
+    telegram.on(
+        "getFile",
+        lambda body: web.json_response(
+            {"ok": False, "error_code": 400, "description": "Bad Request: wrong id"}
+        ),
+    )
+    await feed(dp, message_update("/resave чужой-id"))
+    assert telegram.sent[-1]["text"] == "Такой file_id скачать не получилось."
+
     await dp.api.close_session()
 
 

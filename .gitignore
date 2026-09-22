@@ -17,3 +17,5 @@ build/
 *.sqlite3
 # заметки автора о проблемах, не часть проекта
 .issues/
+# куда examples/download_bot.py сохраняет файлы при ручном запуске
+downloads/

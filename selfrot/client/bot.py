@@ -6,7 +6,12 @@ from typing import Any, TypeVar
 from pydantic import TypeAdapter
 
 from ..config import ConfigAPI
-from ..exceptions import ConfigError, TelegramAPIError, TelegramRetryAfter
+from ..exceptions import (
+    ConfigError,
+    FileNotAvailableError,
+    TelegramAPIError,
+    TelegramRetryAfter,
+)
 from ..methods.base import TelegramMethod
 from .defaults import BotDefaults
 from .methods import BotMethods
@@ -105,6 +110,23 @@ class Bot(BotMethods):
         return _adapter(method.__returning__).validate_python(
             response["result"], context={"bot": self}
         )
+
+    async def download_file(self, file_path: str) -> bytes:
+        """
+        Байты файла по file_path (из get_file(file_id).file_path). Отдельный URL, не
+        через call(): не JSON-ответ Bot API, лимит Telegram — 20 МБ на файл.
+        """
+        return await self.session.download(file_path, token=self.token)
+
+    async def download(self, file_id: str) -> bytes:
+        """get_file(file_id) и сразу download_file: байты файла по его id."""
+        file = await self.get_file(file_id)
+        if file.file_path is None:
+            raise FileNotAvailableError(
+                f"getFile({file_id!r}) не вернул file_path: файл недоступен для скачивания"
+            )
+
+        return await self.download_file(file.file_path)
 
     async def close_session(self) -> None:
         """Закрыть HTTP-сессию. (`close` — это метод Bot API, а не он.)"""
