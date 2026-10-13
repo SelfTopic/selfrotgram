@@ -774,6 +774,86 @@ data = await self.ctx.bot.download(file_id)   # bytes
 
 ---
 
+## 16. `pagination_bot`: самообновляющееся сообщение
+
+**Что делает:** `/list` — каталог на страницах с кликабельными товарами, `/counter` —
+счётчик с кнопками `−1`/`+1`. Оба хендлера нажатия — по одной строке: ни
+`edit_message_text`, ни `callback_query.answer()`, ни разбора данных кнопки в них не видно.
+**Попробуйте:** полистайте каталог вперёд-назад, нажмите на товар, затем погоняйте счётчик.
+
+Раньше хендлер нажатия выглядел так: разобрать `payload`, пересчитать новое содержимое,
+позвать `ctx.edit_message_text(...)`, позвать `ctx.callback_query.answer()` — и так в каждом
+хендлере с динамической клавиатурой. `View` берёт всё это на себя: опишите, как выглядит
+содержимое сейчас (`render`) и что сделать с состоянием при нажатии (`apply`, если оно вообще
+меняется), а `show`/`press` сделают остальное.
+
+**Счётчик — самый простой `View`:**
+
+```python
+class CounterPress(CallbackPayload, prefix="counter"):
+    delta: int
+
+class Counter(View):
+    payload = CounterPress
+    n = 0
+
+    @classmethod
+    async def render(cls, ctx, data):
+        if isinstance(data, CounterPress):
+            cls.n += data.delta
+        return ViewContent(body=f"Счётчик: {cls.n}", rows=[[button("+1", CounterPress(delta=1))]])
+
+class Show(MessageHandler[...]):
+    query = Command("counter")
+    async def handle(self): await Counter.show(self.ctx)
+
+class Pressed(CallbackQueryHandler[...]):
+    query = Counter.filter()
+    async def handle(self): await Counter.press(self.ctx)
+```
+
+`payload` — ваш собственный `CallbackPayload`, `View` не навязывает форму данных кнопки.
+`render(ctx, data)` вызывается и при первом показе (`data is None`), и при каждом нажатии
+(`data` — то, что только что нажали) — здесь состояние (`cls.n`) меняется прямо в `render`,
+но для состояния в БД для этого есть отдельный метод, `apply(ctx, data)`: он срабатывает
+один раз до повторного `render`, которое после этого просто перечитывает текущую правду
+заново. По умолчанию `apply` ничего не делает — ровно так, как у счётчика выше.
+
+**Каталог — частный случай, `Pagination`.** Номер страницы, навигационный ряд («« N/M »»),
+проверка границ — то, что повторяется в любом листаемом списке, уже сделано. От вас —
+`total()` (сколько всего элементов) и `page_content()` (содержимое уже зажатой в границы
+страницы, без навигации — её допишет сам `Pagination`):
+
+```python
+class Catalog(Pagination, prefix="catalog"):
+    per_page = 5
+
+    @classmethod
+    async def total(cls, ctx):
+        return len(ITEMS)                       # мог бы быть await ctx.db.count(...)
+
+    @classmethod
+    async def page_content(cls, ctx, page):
+        chunk = ITEMS[page * cls.per_page : (page + 1) * cls.per_page]
+        rows = [[button(item, ItemPayload(index=i))] for i, item in enumerate(chunk)]
+        return ViewContent(body="Выберите товар:", rows=rows)
+```
+
+`rows` — ряды кнопок самих элементов списка (здесь — один товар на ряд), `Pagination`
+кладёт их до навигации. Элементы не обязаны быть кнопками вообще: `page_content` может
+отдать `body=InputRichMessage(blocks=[...])` вместо строки — тогда получится таблица без
+единой кликабельной строки, только с листанием (в этом примере такого нет, но `View` сам
+решает, `sendMessage`/`sendRichMessage` звать, по типу `body`).
+`closable = True` добавляет кнопку «✕»; по умолчанию она удаляет сообщение (`closed()`,
+переопределяемый метод — своя логика закрытия тоже не проблема).
+
+**Запомните:** `View` — общая механика («отправить, поправить, ответить»), `Pagination` —
+готовая надстройка над ней для одного частого случая (номер страницы). Собственный тумблер
+или степпер верстать всё равно вам — универсальный виджет для них не придумаешь, в отличие
+от навигационного ряда списка.
+
+---
+
 ## Что читать дальше
 
 - [Как устроена библиотека](design.md): те же идеи в виде схемы.

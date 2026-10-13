@@ -18,6 +18,7 @@ EXAMPLES = [  # у каждого есть хендлеры
     ("examples.data_parsed_bot", "Dispatcher", None),
     ("examples.reply_bot", "Dispatcher", None),
     ("examples.download_bot", "Dispatcher", None),
+    ("examples.pagination_bot", "Dispatcher", None),
     ("examples.deferred_bot", "Dispatcher", None),
     ("examples.webhook_bot", "Dispatcher", None),
     ("examples.db_bot", "Dispatcher", "sqlalchemy"),
@@ -257,6 +258,43 @@ async def test_download_bot_saves_and_resaves(telegram, monkeypatch, tmp_path):
     )
     await feed(dp, message_update("/resave чужой-id"))
     assert telegram.sent[-1]["text"] == "Такой file_id скачать не получилось."
+
+    await dp.api.close_session()
+
+
+async def test_pagination_bot_catalog_and_counter(telegram):
+    from examples.pagination_bot import Counter, Dispatcher
+
+    from .conftest import callback_update, message_update
+
+    Counter.n = 0  # общий classvar на весь процесс — сбрасываем перед сценарием
+    dp = Dispatcher(token="123456:TEST-token")
+
+    await feed(dp, message_update("/list"))
+    assert telegram.sent[-1]["text"] == "Выберите товар:"
+    first_row = telegram.sent[-1]["reply_markup"]["inline_keyboard"][0]
+    assert first_row == [{"text": "Товар 1", "callback_data": "item:0"}]
+
+    telegram.clear()
+    await feed(dp, callback_update("catalog:goto:1"))
+    edit = next(b for m, b in telegram.calls if m == "editMessageText")
+    assert edit["reply_markup"]["inline_keyboard"][0] == [
+        {"text": "Товар 6", "callback_data": "item:5"}
+    ]
+
+    telegram.clear()
+    await feed(dp, callback_update("item:5"))
+    alert = next(b for m, b in telegram.calls if m == "answerCallbackQuery")
+    assert alert["text"] == "Вы выбрали: Товар 6"
+
+    telegram.clear()
+    await feed(dp, message_update("/counter"))
+    assert telegram.sent[-1]["text"] == "Счётчик: 0"
+
+    telegram.clear()
+    await feed(dp, callback_update("counter:1"))
+    edit = next(b for m, b in telegram.calls if m == "editMessageText")
+    assert edit["text"] == "Счётчик: 1"
 
     await dp.api.close_session()
 

@@ -182,7 +182,8 @@ $ selfrot check
   `post_handle(exc)`.
 - **Диалоги (FSM):** `States`, `State(Model)` с типизированными данными, `ctx.fsm`,
   `MemoryStorage(ttl=...)`.
-- **Клавиатуры:** `InlineKeyboard` с проверкой лимитов Telegram.
+- **Клавиатуры:** `InlineKeyboard` с проверкой лимитов Telegram; `View`/`Pagination` —
+  самообновляющееся сообщение без `edit_message_text` и разбора данных кнопки в хендлере.
 - **Файлы:** `ctx.download(путь)` — файл текущего апдейта сам; `bot.download(file_id)` — байты
   по id, без апдейта.
 - **Транспорт:** таймауты, повтор при 429, понятные ошибки сети, прокси, `Bot.defaults`.

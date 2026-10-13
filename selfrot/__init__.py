@@ -11,6 +11,7 @@ from .handlers import BaseHandler, MessageHandler
 from .keyboard import InlineKeyboard, button
 from .middleware import BaseMiddleware
 from .router import BaseRouter
+from .view import Pagination, View, ViewContent
 
 try:
     __version__ = version("selfrotgram")
@@ -31,10 +32,13 @@ __all__ = [
     "InlineKeyboard",
     "MemoryStorage",
     "MessageHandler",
+    "Pagination",
     "Rest",
     "State",
     "States",
     "TEvent",
+    "View",
+    "ViewContent",
     "__version__",
     "button"
 ]
