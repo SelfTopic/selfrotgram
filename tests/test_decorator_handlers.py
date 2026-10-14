@@ -190,3 +190,53 @@ class TestDefinitionErrors:
             async def handle(self): ...
 
         assert X.query is cmd
+
+
+class RepliedTargetMixin:
+    """Как RepliedTargetHandler у chestor_bot: миксин не наследует BaseHandler вовсе,
+    держит handle(), финальный класс добавляет query и переопределяет perform()."""
+
+    async def perform(self) -> str:
+        raise NotImplementedError
+
+    async def handle(self) -> None:
+        await self.perform()
+
+
+class TestHandleFromMixin:
+    """handle() пришёл от миксина (не от самого класса и не от BaseHandler) — обычный
+    приём композиции, не тот же механизм, что декораторы-ветки, и не должен путаться
+    с ним: query+handle-от-миксина — валидный классический стиль."""
+
+    async def test_query_plus_mixin_handle_is_valid(self, telegram: FakeTelegram):
+        calls = []
+
+        class Perform(RepliedTargetMixin):
+            async def perform(self) -> None:
+                calls.append("called")
+
+        class X(Perform, MessageHandler[BaseContext[TextMessage]]):
+            query = cmd
+
+        class Root(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+            handlers = (X,)
+
+        await feed(make(Root), message_update("/fun"))
+        assert calls == ["called"]
+
+    def test_mixin_handle_without_query_is_still_empty(self):
+        # Миксин без handle() вообще (только perform, который сам ничего не вызывает) —
+        # не считается: пустой хендлер должен падать, как и раньше.
+        with pytest.raises(DefinitionError, match="хендлер пуст"):
+
+            class X(MessageHandler[BaseContext[TextMessage]]):
+                async def perform(self) -> None: ...
+
+    def test_decorators_with_handle_from_mixin(self):
+        with pytest.raises(DefinitionError, match="нельзя писать handle"):
+
+            class X(RepliedTargetMixin, MessageHandler[BaseContext[TextMessage]]):
+                @cmd.where(command=FunCommandsEnum.who)
+                async def who(self): ...

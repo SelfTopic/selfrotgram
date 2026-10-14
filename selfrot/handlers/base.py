@@ -30,6 +30,18 @@ def _own_entries(cls: type) -> list[_Entry]:
     return entries
 
 
+def _inherits_handle(cls: type) -> bool:
+    """
+    Настоящая реализация handle() где-то в цепочке наследования — прямо на cls, или
+    пришла от миксина (класс без query/декораторов сам, а handle() даёт другой базовый
+    класс — частый приём: RepliedTargetHandler/BanFlow и подобные миксины держат handle(),
+    хендлер только добавляет query и переопределяет свой метод, например perform()).
+    BaseHandler не считается: у него handle() сам диспетчеризирует декорированные ветки —
+    это не чья-то реализация, а то, ради чего диспетчеризация вообще есть.
+    """
+    return any("handle" in vars(base) for base in cls.__mro__ if base is not BaseHandler)
+
+
 def _header_payload_type(cls: type) -> type[BaseModel] | None:
     """Тип из заголовка: MessageHandler[AppContext[TextMessage]] -> TextMessage."""
     for base in getattr(cls, "__orig_bases__", ()):
@@ -83,10 +95,10 @@ class BaseHandler(ABC, Generic[TContext]):
                 raise DefinitionError(
                     f"{cls.__name__}: нельзя смешивать query и методы-декораторы"
                 )
-            if "handle" in vars(cls):
+            if _inherits_handle(cls):
                 raise DefinitionError(
-                    f"{cls.__name__}: нельзя писать handle() вместе с методами-"
-                    "декораторами — они никогда не вызовутся"
+                    f"{cls.__name__}: нельзя писать handle() (свой или от миксина) "
+                    "вместе с методами-декораторами — они никогда не вызовутся"
                 )
 
             cls._entries = entries
@@ -95,10 +107,10 @@ class BaseHandler(ABC, Generic[TContext]):
         if promised_type is None:
             return
 
-        if not entries and "handle" not in vars(cls):
+        if not entries and not _inherits_handle(cls):
             raise DefinitionError(
-                f"{cls.__name__}: ни query, ни декорированного метода, ни handle() — "
-                "хендлер пуст"
+                f"{cls.__name__}: ни декорированного метода, ни handle() (своего "
+                "или от миксина) — хендлер пуст"
             )
 
         guaranteed = (
