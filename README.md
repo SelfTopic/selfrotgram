@@ -171,7 +171,8 @@ $ selfrot check
 
 - **Фильтры:** `Text*`, `Command` (+`AnyCommand`, `.where(поле=значение)`), `CallbackData*`,
   `CallbackPayload` (типизированные данные кнопок, `pressed_by`), `Has*` (по одному на каждое
-  поле), `MemberJoined`/`MemberLeft`, `FromUser`, `InState`; комбинаторы `&`, `|`, `~`.
+  поле), `HasMention`, `MemberJoined`/`MemberLeft`, `FromUser`, `InState`; комбинаторы `&`,
+  `|`, `~`.
 - **Несколько веток одной команды в одном хендлере:** фильтр как декоратор метода — первая
   подошедшая ветка вызывается, без отдельного класса на каждую.
 - **Аргументы команд как данные:** `CommandArgs` (типы, `Literal`, необязательные, `Rest`) и
@@ -188,6 +189,9 @@ $ selfrot check
   самообновляющееся сообщение без `edit_message_text` и разбора данных кнопки в хендлере.
 - **Файлы:** `ctx.download(путь)` — файл текущего апдейта сам; `bot.download(file_id)` — байты
   по id, без апдейта.
+- **Упоминания без username:** `entity_text(text, entity)` — текст сущности по UTF-16
+  offset/length Telegram, не по кодовым точкам Python; `mentions(message)`/`ctx.mentions()`
+  — все кликабельные имена (text_mention) с пользователями внутри.
 - **Транспорт:** таймауты, повтор при 429, понятные ошибки сети, прокси, `Bot.defaults`.
 
 ## Чего пока нет

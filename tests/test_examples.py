@@ -204,6 +204,48 @@ async def test_reply_bot_every_command(telegram):
     await dp.api.close_session()
 
 
+async def test_reply_bot_warn_by_mention(telegram):
+    from examples.reply_bot import Dispatcher
+
+    from .conftest import message_update
+
+    dp = Dispatcher(token="123456:TEST-token")
+    mentioned = {"id": 42, "is_bot": False, "first_name": "Вася"}
+
+    await feed(
+        dp,
+        message_update(
+            "/warn Вася флуд",
+            entities=[
+                {"type": "text_mention", "offset": 6, "length": 4, "user": mentioned}
+            ],
+        ),
+    )
+    assert telegram.sent[-1]["text"] == "Предупреждение: Вася (id 42), Вася флуд"
+
+    telegram.clear()
+    await feed(
+        dp,
+        message_update(
+            "/warn Бот",
+            entities=[
+                {
+                    "type": "text_mention",
+                    "offset": 6,
+                    "length": 3,
+                    "user": {**mentioned, "id": 5, "is_bot": True},
+                }
+            ],
+        ),
+    )
+    assert telegram.sent[-1]["text"] == "Ботов не предупреждаем."
+
+    telegram.clear()  # ни ответа, ни упоминания — подсказка, не тишина
+    await feed(dp, message_update("/warn просто текст"))
+    assert telegram.sent[-1]["text"].startswith("Не то сообщение для этой команды.")
+    await dp.api.close_session()
+
+
 async def test_download_bot_saves_and_resaves(telegram, monkeypatch, tmp_path):
     from aiohttp import web
 

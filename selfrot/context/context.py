@@ -8,9 +8,10 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from ..client import Bot
 from ..deferred import BackgroundTasks, Deferred
+from ..entities import mentions as _mentions
 from ..exceptions import ContextError, DefinitionError, FileNotAvailableError
 from ..fsm import FSM
-from ..types import Update
+from ..types import Update, User
 from .accessors import TEvent
 from .methods import ContextMethods
 
@@ -126,6 +127,15 @@ class BaseContext(ContextMethods[TEvent]):
             return path
 
         return await asyncio.to_thread(_write_new, path, data)
+
+    def mentions(self) -> list[tuple[str, User]]:
+        """
+        Упоминания без username (кликабельное имя, text_mention) в сообщении этого
+        апдейта: (кликабельный текст, пользователь). Ярлык для mentions(ctx.message);
+        апдейт не про сообщение или в нём нет упоминаний — [].
+        """
+        message = self._source_message()
+        return _mentions(message) if message is not None else []
 
     @property
     def fsm(self) -> FSM:

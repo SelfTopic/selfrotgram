@@ -15,6 +15,7 @@ from .command import CommandCall as CommandCall
 from .command import CommandWhere as CommandWhere
 from .has import *
 from .member import ChatMemberTransition as ChatMemberTransition
+from .mention import HasMention as HasMention
 from .member import MemberJoined as MemberJoined
 from .member import MemberLeft as MemberLeft
 from .state import InState as InState

@@ -2,9 +2,10 @@ import logging
 import os
 from collections import Counter
 
-from selfrot import BaseContext, BaseDispatcher, Bot, MessageHandler
+from selfrot import BaseContext, BaseDispatcher, Bot, MessageHandler, mentions
 from selfrot.filter import (
     Command,
+    HasMention,
     HasReplyAnimation,
     HasReplyAudio,
     HasReplyCaption,
@@ -39,7 +40,7 @@ from selfrot.types import (
 # Ответ на сообщение: что известно про то, на что ответили. Запустите бота и отвечайте
 # командами на разные сообщения (в личке или в группе, в группе бот отвечает на саму команду).
 #
-#   /warn причина  на сообщение человека          предупредить автора
+#   /warn причина  на сообщение человека (или на кликабельное имя без ответа) предупредить автора
 #   /text          на текстовое сообщение          посчитать буквы и слова
 #   /entities      на текст или подпись с форматом  что в нём: жирный, ссылки, упоминания
 #   /sticker       на стикер                       эмодзи и набор
@@ -54,7 +55,7 @@ from selfrot.types import (
 # несколько условий сразу и обычный if.
 
 HELP = """Команды работают в ответ на сообщение:
-/warn причина: на сообщение человека
+/warn причина: на сообщение человека, или без ответа — на кликабельное имя в самой команде
 /text: на текст
 /entities: на текст или подпись с форматированием
 /sticker: на стикер
@@ -86,6 +87,26 @@ class Warn(MessageHandler[BaseContext[WarnMessage]]):
         await self.ctx.message.reply(
             f"Предупреждение: {offender.first_name} (id {offender.id}), {reason}"
         )
+
+
+# Без ответа вообще, но в самой команде есть кликабельное имя — Telegram подставляет его
+# (сущность text_mention), когда выбираешь человека без username из автокомплита.
+# HasMention() — условие для диспетчера, а не if в handle(): иначе апдейт без упоминания
+# застрял бы здесь и не дошёл бы до Hint ниже.
+class WarnByMention(MessageHandler[BaseContext[TextMessage]]):
+    cmd = Command("warn")
+    query = cmd & HasMention()
+
+    async def handle(self) -> None:
+        name, offender = mentions(self.ctx.message)[0]
+        if offender.is_bot:
+            await self.ctx.message.reply("Ботов не предупреждаем.")
+            return
+
+        # rest включает и сам текст упоминания (это часть команды, не вырезаем): для
+        # точного отделения причины понадобились бы entity.offset/length через entity_text.
+        reason = self.cmd.call(self.ctx).rest or "без причины"
+        await self.ctx.message.reply(f"Предупреждение: {name} (id {offender.id}), {reason}")
 
 
 class TextCommand(TextMessage, ReplyTextMessage, frozen=True): ...
@@ -281,6 +302,7 @@ class Dispatcher(BaseDispatcher[BaseContext]):
     # Порядок важен: Hint должен стоять после всех команд, которым нужен ответ.
     handlers = (
         Warn,
+        WarnByMention,
         TextStats,
         Entities,
         CaptionEntities,

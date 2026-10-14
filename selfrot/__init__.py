@@ -6,6 +6,7 @@ from .command_args import CommandArgs, Rest
 from .context import BaseContext, TEvent
 from .deferred import Deferred
 from .dispatcher import BaseDispatcher
+from .entities import entity_text, mentions
 from .fsm import MemoryStorage, State, States
 from .handlers import BaseHandler, MessageHandler
 from .keyboard import InlineKeyboard, button
@@ -40,5 +41,7 @@ __all__ = [
     "View",
     "ViewContent",
     "__version__",
-    "button"
+    "button",
+    "entity_text",
+    "mentions",
 ]
