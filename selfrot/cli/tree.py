@@ -162,15 +162,25 @@ def build_tree(
                 if doc := (item.__doc__ or "").strip().splitlines():
                     notes.append(doc[0].strip())
 
+            entries: list[Any] | None = getattr(item, "_entries", None)
             rows.append(
                 Row(
                     left + item.__name__,
                     _kind_text(item),
-                    _filter_text(item),
+                    "" if entries else _filter_text(item),
                     "  ".join(notes),
                     next_prefix,
                 )
             )
+
+            if entries:
+                for branch_index, (query, name, _) in enumerate(entries):
+                    branch_is_last = branch_index == len(entries) - 1
+                    branch_left = next_prefix + (last if branch_is_last else branch)
+                    branch_cont = next_prefix + (blank if branch_is_last else pipe)
+                    rows.append(
+                        Row(branch_left + name, filter=_pretty(query), cont=branch_cont)
+                    )
 
     note = router_note(dispatcher)
     rows.append(Row(type(dispatcher).__name__, note=note))
@@ -185,7 +195,7 @@ def render(tree: Tree) -> str:
     kind_width = max((len(r.kind) for r in handlers), default=0)
     lines = []
     for row in tree.rows:
-        if row.kind:
+        if row.kind or row.filter:
             head = f"{row.left.ljust(left_width)}  {row.kind.ljust(kind_width)}  "
             first, *rest = row.filter.split("\n")
             # Продолжение фильтра идёт под ним; слева остаются только ветки дерева.

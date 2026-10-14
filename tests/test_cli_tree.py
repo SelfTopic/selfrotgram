@@ -205,6 +205,50 @@ class TestBuildTree:
         assert "callback_query" in "\n".join(lines(Buttons(token="1:T")))
 
 
+class TestDecoratorBranchesInTree:
+    """Хендлер с ветками-декораторами: query всегда None, но это не «без фильтра» —
+    tree показывает ветки по одной, а check не путает их с настоящим catch-all."""
+
+    def make(self) -> BaseDispatcher:
+        cmd = Command("fun")
+
+        class Branches(MessageHandler[BaseContext[TextMessage]]):
+            @cmd
+            async def a(self): ...
+
+            @cmd & FromUser(1)
+            async def b(self): ...
+
+        class Other(MessageHandler[BaseContext[TextMessage]]):
+            query = Command("other")
+
+            async def handle(self): ...
+
+        class Root(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+            handlers = (Branches, Other)
+
+        return Root(token="1:T")
+
+    def test_branches_are_listed_one_by_one_not_without_filter(self):
+        text = lines(self.make())
+        assert "без фильтра" not in "\n".join(text)
+        a_row = next(t for t in text if t.lstrip("│├└─ ").split()[0] == "a")
+        assert "FromUser" not in a_row  # своя ветка, не чужой фильтр
+        b_row = next(t for t in text if t.lstrip("│├└─ ").split()[0] == "b")
+        assert "FromUser(1)" in b_row
+
+    def test_handler_below_is_still_reachable(self):
+        text = lines(self.make())
+        other = next(t for t in text if "Other" in t)
+        assert "недостижим" not in other
+
+    def test_warnings_count_stays_zero(self):
+        tree = build_tree(self.make())
+        assert tree.warnings == 0
+
+
 class TestSameFilter:
     def test_same_builtin_filter_is_unreachable(self):
         class First(MessageHandler[BaseContext[TextMessage]]):

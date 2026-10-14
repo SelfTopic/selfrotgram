@@ -201,6 +201,66 @@ class TestWarnings:
         # у пользовательского фильтра repr скрывает параметр: «одинаковые» IsUser() ложным срабатыванием
         assert not any("Two недостижим" in m for m in messages(run_check(bot_project)))
 
+    def test_decorator_branches_are_not_mistaken_for_catch_all(self, bot_project):
+        # Баг из 0.1.5/0.1.6: query хендлера с ветками всегда None, а анализ недостижимости
+        # смотрел только на query — ветки с декораторами выглядели как «без фильтра, ловит
+        # всё этого вида», и всё, что ниже того же вида, ложно считалось недостижимым.
+        write(
+            bot_project,
+            "routers/branches.py",
+            HEAD + "class Ask(MessageHandler[AppContext[TextMessage]]):\n"
+            "    @Command('a')\n    async def a(self): ...\n\n\n"
+            "class Other(MessageHandler[AppContext[TextMessage]]):\n"
+            "    query = Command('b')\n\n    async def handle(self): ...\n\n\n"
+            "class BranchesRouter(BaseRouter[AppContext]):\n    handlers = (Ask, Other)\n",
+        )
+        root = bot_project / "src/bot/routers/__init__.py"
+        text = root.read_text(encoding="utf-8")
+        root.write_text(
+            text.replace(
+                "# selfrot: imports",
+                "from .branches import BranchesRouter\n# selfrot: imports",
+            ).replace(
+                "# selfrot: routers", "BranchesRouter,\n        # selfrot: routers"
+            ),
+            encoding="utf-8",
+        )
+        assert not any(
+            "Other недостижим" in m for m in messages(run_check(bot_project))
+        )
+
+    def test_decorator_branch_with_same_filter_still_marks_unreachable(
+        self, bot_project
+    ):
+        # Обратная сторона того же разбора: ветка всё-таки должна ловить недостижимость,
+        # если её фильтр совпадает с фильтром хендлера ниже (анализ по веткам, не по query).
+        write(
+            bot_project,
+            "routers/branches2.py",
+            HEAD + "class OneBranch(MessageHandler[AppContext[TextMessage]]):\n"
+            "    @Command('a')\n    async def a(self): ...\n\n\n"
+            "class SameFilter(MessageHandler[AppContext[TextMessage]]):\n"
+            "    query = Command('a')\n\n    async def handle(self): ...\n\n\n"
+            "class Branches2Router(BaseRouter[AppContext]):\n"
+            "    handlers = (OneBranch, SameFilter)\n",
+        )
+        root = bot_project / "src/bot/routers/__init__.py"
+        text = root.read_text(encoding="utf-8")
+        root.write_text(
+            text.replace(
+                "# selfrot: imports",
+                "from .branches2 import Branches2Router\n# selfrot: imports",
+            ).replace(
+                "# selfrot: routers", "Branches2Router,\n        # selfrot: routers"
+            ),
+            encoding="utf-8",
+        )
+        found = messages(run_check(bot_project), "warning")
+        assert any(
+            "SameFilter недостижим: выше OneBranch тот же фильтр Command('a')" in m
+            for m in found
+        )
+
     def test_no_handlers_at_all(self, bot_project):
         root = bot_project / "src/bot/routers/__init__.py"
         root.write_text(

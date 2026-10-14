@@ -1,5 +1,7 @@
+import operator
 from collections.abc import Iterator
 from dataclasses import dataclass
+from functools import reduce
 from typing import Any
 
 from ..filter.base import AndFilter, BaseFilter, NotFilter, OrFilter
@@ -87,6 +89,22 @@ def same_filter(a: BaseFilter[Any], b: BaseFilter[Any]) -> bool:
     return True
 
 
+def effective_query(handler: type[BaseHandler[Any]]) -> BaseFilter[Any] | None:
+    """
+    Что реально решает, достанется ли хендлеру апдейт: query — у обычного хендлера, а
+    у хендлера с ветками (декораторами, query всегда None — см. handlers/base.py) —
+    фильтр хотя бы одной ветки, то есть все фильтры веток через | (ветка забирает
+    апдейт — значит, и хендлер его забирает). Без этого разбора хендлер с ветками
+    выглядел бы как query=None — «ловит вообще всё этого вида», хотя сам по себе
+    (без хотя бы одной подошедшей ветки) он ничего не ловит.
+    """
+    entries = getattr(handler, "_entries", None)
+    if not entries:
+        return handler.query
+
+    return reduce(operator.or_, (query for query, _, _ in entries))
+
+
 def unreachable(refs: list[HandlerRef]) -> dict[int, str]:
     """
     Индекс хендлера (в порядке проверки) -> почему он никогда не сработает:
@@ -99,17 +117,18 @@ def unreachable(refs: list[HandlerRef]) -> dict[int, str]:
     for index, ref in enumerate(refs):
         handler = ref.handler
         kind = handler.update_field
+        query = effective_query(handler)
         if above := catch_all.get(kind):
             reasons[index] = f"выше {above} без фильтра ловит всё этого вида"
-        elif handler.query is not None:
-            for query, name in seen.get(kind, []):
-                if same_filter(query, handler.query):
-                    reasons[index] = f"выше {name} тот же фильтр {flat_repr(handler.query)}"
+        elif query is not None:
+            for other, name in seen.get(kind, []):
+                if same_filter(other, query):
+                    reasons[index] = f"выше {name} тот же фильтр {flat_repr(query)}"
                     break
 
-        if handler.query is None:
+        if query is None:
             catch_all.setdefault(kind, handler.__name__)
         else:
-            seen.setdefault(kind, []).append((handler.query, handler.__name__))
+            seen.setdefault(kind, []).append((query, handler.__name__))
 
     return reasons
