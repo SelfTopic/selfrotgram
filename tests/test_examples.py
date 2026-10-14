@@ -20,6 +20,7 @@ EXAMPLES = [  # у каждого есть хендлеры
     ("examples.download_bot", "Dispatcher", None),
     ("examples.pagination_bot", "Dispatcher", None),
     ("examples.deferred_bot", "Dispatcher", None),
+    ("examples.fun_bot", "Dispatcher", None),
     ("examples.webhook_bot", "Dispatcher", None),
     ("examples.db_bot", "Dispatcher", "sqlalchemy"),
     ("examples.bot_command.dispatcher", "AppDispatcher", "sqlalchemy"),
@@ -295,6 +296,53 @@ async def test_pagination_bot_catalog_and_counter(telegram):
     await feed(dp, callback_update("counter:1"))
     edit = next(b for m, b in telegram.calls if m == "editMessageText")
     assert edit["text"] == "Счётчик: 1"
+
+    await dp.api.close_session()
+
+
+async def test_fun_bot_branches_and_quiz(telegram):
+    from examples.fun_bot import Dispatcher
+
+    from .conftest import callback_update, message_update
+
+    dp = Dispatcher(token="123456:TEST-token")
+
+    reply = {
+        "message_id": 5,
+        "date": 1,
+        "chat": {"id": 7, "type": "private", "first_name": "В"},
+        "text": "привет",
+        "from": {"id": 99, "is_bot": False, "first_name": "Петя"},
+    }
+    await feed(dp, message_update("/fun выбери", reply_to_message=reply))
+    assert telegram.sent[-1]["text"] == "Выбираю Петя!"
+
+    telegram.clear()
+    await feed(dp, message_update("/fun выбери"))
+    assert telegram.sent[-1]["text"] == "Выбираю... случайного участника чата!"
+
+    telegram.clear()
+    await feed(dp, message_update("/fun кто"))
+    assert telegram.sent[-1]["text"] == "Случайный участник: вот ты!"
+
+    telegram.clear()
+    await feed(dp, message_update("/fun ерунда"))
+    assert telegram.sent == []  # ни одна ветка не подошла
+
+    telegram.clear()
+    await feed(dp, message_update("/quiz"))
+    buttons = telegram.sent[-1]["reply_markup"]["inline_keyboard"][0]
+    assert [b["text"] for b in buttons] == ["Гуль", "Человек"]
+
+    telegram.clear()
+    await feed(dp, callback_update(buttons[0]["callback_data"]))
+    alert = next(b for m, b in telegram.calls if m == "answerCallbackQuery")
+    assert alert["text"] == "Ты выбрал: Гуль"
+
+    telegram.clear()
+    await feed(dp, callback_update(buttons[1]["callback_data"]))
+    alert = next(b for m, b in telegram.calls if m == "answerCallbackQuery")
+    assert alert["text"] == "Ты выбрал: Человек"
 
     await dp.api.close_session()
 

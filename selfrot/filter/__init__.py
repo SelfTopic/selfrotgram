@@ -12,6 +12,7 @@ from .callback import CallbackPayloadFilter as CallbackPayloadFilter
 from .command import AnyCommand as AnyCommand
 from .command import Command as Command
 from .command import CommandCall as CommandCall
+from .command import CommandWhere as CommandWhere
 from .has import *
 from .member import ChatMemberTransition as ChatMemberTransition
 from .member import MemberJoined as MemberJoined
