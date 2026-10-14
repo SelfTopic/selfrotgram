@@ -48,8 +48,9 @@ packages = [{include = "selfrot"}]
 dev = [
     "pytest (>=9.1.1,<10.0.0)",
     "pytest-asyncio (>=1.4.0,<2.0.0)",
-    # для примеров (db_bot, bot_command)
-    "sqlalchemy (>=2.0.41,<3.0.0)",
+    # для примеров (db_bot, bot_command); [asyncio] тянет greenlet, без него упадёт
+    # не при установке, а при первом async-вызове (CI упускал: greenlet уже был в кеше)
+    "sqlalchemy[asyncio] (>=2.0.41,<3.0.0)",
     "aiosqlite (>=0.22.1,<0.23.0)",
 ]
 
