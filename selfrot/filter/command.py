@@ -7,7 +7,7 @@ from ..command_args import CommandArgs
 from ..context import BaseContext
 from ..exceptions import ArgProblem, CommandArgsError, DefinitionError, FilterMatchError
 from ..types import Message, TextMessage
-from .base import BaseFilter
+from .base import BaseFilter, Guarantee
 
 
 @dataclass(frozen=True)
@@ -242,6 +242,68 @@ class Command(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):
         if self.ignore_case:
             parts.append("ignore_case=True")
         return f"Command({', '.join(parts)})"
+
+    def where(self, **equals: Any) -> "CommandWhere[TParsed]":
+        """
+        Та же команда, но срабатывает только если у разобранных аргументов указанные
+        поля равны заданным значениям — ветка диспетчеризации внутри одного хендлера
+        (декоратор на методе, см. handlers/base.py), не отдельный класс:
+
+            cmd = Command("fun", FunArgs)
+
+            class Fun(MessageHandler[BaseContext[TextMessage]]):
+                @cmd.where(command=FunCommandsEnum.choice)
+                async def choice(self): ...
+
+                @cmd.where(command=FunCommandsEnum.who)
+                async def who(self): ...
+
+        Сравнение значения не трогает, какие поля заполнены — guarantee() та же, что
+        у самой команды, не больше.
+        """
+        if self.args_model is None:
+            raise DefinitionError(
+                f"{self!r}.where(): нужна модель аргументов (второй параметр Command)"
+            )
+
+        unknown = set(equals) - set(self.args_model.model_fields)
+        if unknown:
+            raise DefinitionError(
+                f"{self!r}.where(): нет полей {sorted(unknown)}; "
+                f"есть {list(self.args_model.model_fields)}"
+            )
+
+        return CommandWhere(self, **equals)
+
+
+class CommandWhere(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):
+    """Command, у которой указанные поля разобранных аргументов равны заданным
+    значениям. Создаётся через Command.where(поле=значение), не напрямую."""
+
+    guarantees = TextMessage
+
+    def __init__(self, cmd: "Command[TParsed]", **equals: Any) -> None:
+        self.cmd = cmd
+        self.equals = equals
+
+    async def check(self, ctx: BaseContext[Any]) -> bool:
+        try:
+            parsed = self.cmd.parse(ctx)
+        except (FilterMatchError, CommandArgsError):
+            return False
+
+        return all(getattr(parsed, name) == value for name, value in self.equals.items())
+
+    def guarantee(self) -> Guarantee:
+        return self.cmd.guarantee()
+
+    def parse(self, ctx: BaseContext[Any]) -> TParsed:
+        """Модель аргументов. Только после успешного check()."""
+        return self.cmd.parse(ctx)
+
+    def __repr__(self) -> str:
+        args = ", ".join(f"{name}={value!r}" for name, value in self.equals.items())
+        return f"{self.cmd!r}.where({args})"
 
 
 class AnyCommand(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any, ClassVar, Generic, TypeVar, cast
 
@@ -34,6 +35,22 @@ def _merge_roots(
     )
 
 
+def intersect_guarantees(guarantees: Iterable[Guarantee], description: str) -> Guarantee:
+    """
+    Пересечение нескольких гарантий: тип Bot API общий у всех, поля — только те, что
+    гарантируют ВСЕ сразу, а не хотя бы одна (та же арифметика, что у `a | b` для двух
+    фильтров, только для произвольного их числа — используется и там, и в проверке
+    нескольких веток-методов одного хендлера, см. handlers/base.py).
+    """
+    root: type[BaseModel] | None = None
+    fields: frozenset[str] | None = None
+    for guarantee in guarantees:
+        root = _merge_roots(root, guarantee.root, description)
+        fields = guarantee.fields if fields is None else fields & guarantee.fields
+
+    return Guarantee(root, fields if fields is not None else frozenset())
+
+
 class BaseFilter(ABC, Generic[TContext]):
     """
     check() — обычная асинхронная проверка (никакой магии): фильтр может ходить в
@@ -53,6 +70,24 @@ class BaseFilter(ABC, Generic[TContext]):
 
     @abstractmethod
     async def check(self, ctx: BaseContext[Any]) -> bool: ...
+
+    def __call__(self, func: Callable[..., Any]) -> Callable[..., Any]:
+        """
+        Фильтр как декоратор метода хендлера — ветка диспетчеризации внутри одного
+        класса (см. handlers/base.py): `self.query` у класса остаётся None, методы
+        перебираются по порядку, первый подошедший вызывается. Два декоратора на
+        одном методе — DefinitionError, а не тихая перезапись: иначе непонятно, что
+        вообще показывать в `selfrot tree`/`check`.
+        """
+        existing = getattr(func, "_query", None)
+        if existing is not None:
+            raise DefinitionError(
+                f"{getattr(func, '__qualname__', func)}: два декоратора-фильтра на "
+                f"одном методе ({existing!r} и {self!r})"
+            )
+
+        func._query = self  # type: ignore[attr-defined]
+        return func
 
     def guarantee(self) -> Guarantee:
         if self.guarantees is None:
@@ -108,9 +143,8 @@ class OrFilter(BaseFilter[BaseContext[Any]]):
         self.left = left
         self.right = right
 
-        a, b = left.guarantee(), right.guarantee()
-        self._guarantee = Guarantee(
-            _merge_roots(a.root, b.root, repr(self)), a.fields & b.fields
+        self._guarantee = intersect_guarantees(
+            (left.guarantee(), right.guarantee()), repr(self)
         )
 
     async def check(self, ctx: BaseContext[Any]) -> bool:

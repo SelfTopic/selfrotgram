@@ -24,6 +24,7 @@ BOT_TOKEN=123456:ABC python -m examples.echo_bot  # или из переменн
 | [download_bot.py](download_bot.py) | скачивание файлов: `ctx.download(path)` (файл апдейта сам), `bot.download(file_id)` (по id, без апдейта) |
 | [pagination_bot.py](pagination_bot.py) | самообновляющееся сообщение: `Pagination` (листание страниц каталога) и `View` напрямую (счётчик) — хендлер не видит ни `edit_message_text`, ни `callback_query.answer()` |
 | [keyboards_bot.py](keyboards_bot.py) | `InlineKeyboard`, `CallbackPayload`, `.filter()`, `pressed_by` |
+| [fun_bot.py](fun_bot.py) | несколько веток одной команды в одном хендлере: фильтр как декоратор метода, `Command.where(...)`; тот же приём на `CallbackQueryHandler` (квиз с кнопками) |
 | [chat_members.py](chat_members.py) | `MemberJoined`, `MemberLeft` (`chat_member` и `my_chat_member`) |
 | [fsm_bot.py](fsm_bot.py) | многошаговый диалог: `States`, типизированные данные, `InState`, TTL |
 | [webhook_bot.py](webhook_bot.py) | вебхук и поллинг из одного кода, `on_startup`/`on_shutdown`, `Bot.defaults` |

@@ -169,9 +169,11 @@ $ selfrot check
 
 ## Что умеет
 
-- **Фильтры:** `Text*`, `Command`, `CallbackData*`, `CallbackPayload` (типизированные данные
-  кнопок, `pressed_by`), `Has*` (по одному на каждое поле), `MemberJoined`/`MemberLeft`,
-  `FromUser`, `InState`; комбинаторы `&`, `|`, `~`.
+- **Фильтры:** `Text*`, `Command` (+`AnyCommand`, `.where(поле=значение)`), `CallbackData*`,
+  `CallbackPayload` (типизированные данные кнопок, `pressed_by`), `Has*` (по одному на каждое
+  поле), `MemberJoined`/`MemberLeft`, `FromUser`, `InState`; комбинаторы `&`, `|`, `~`.
+- **Несколько веток одной команды в одном хендлере:** фильтр как декоратор метода — первая
+  подошедшая ветка вызывается, без отдельного класса на каждую.
 - **Аргументы команд как данные:** `CommandArgs` (типы, `Literal`, необязательные, `Rest`) и
   `CommandArgsError` с готовой подсказкой.
 - **Отложенные действия:** `self.defer(fn, delay=...)` и `after_handle()`: сделать позже, уже после
