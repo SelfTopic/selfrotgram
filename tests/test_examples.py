@@ -154,8 +154,16 @@ async def test_reply_bot_every_command(telegram):
 
     cases = [
         # 1. готовое условие
-        ("/warn флуд", {"from": user}, "Предупреждение: Петя (id 99), флуд"),
-        ("/warn", {"from": user}, "Предупреждение: Петя (id 99), без причины"),
+        (
+            "/warn флуд",
+            {"from": user},
+            'Предупреждение: <a href="tg://user?id=99">Петя</a>, флуд',
+        ),
+        (
+            "/warn",
+            {"from": user},
+            'Предупреждение: <a href="tg://user?id=99">Петя</a>, без причины',
+        ),
         ("/warn", {"from": {**user, "id": 5, "is_bot": True}}, "Ботов не предупреждаем."),
         ("/warn флуд", {}, hint),  # ответ есть, автора нет
         ("/warn флуд", None, hint),  # не ответ
@@ -223,7 +231,9 @@ async def test_reply_bot_warn_by_mention(telegram):
             ],
         ),
     )
-    assert telegram.sent[-1]["text"] == "Предупреждение: Вася (id 42), Вася флуд"
+    assert telegram.sent[-1]["text"] == (
+        'Предупреждение: <a href="tg://user?id=42">Вася</a>, Вася флуд'
+    )
 
     telegram.clear()
     await feed(

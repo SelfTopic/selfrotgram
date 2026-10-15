@@ -197,7 +197,8 @@ $ selfrot check
   по id, без апдейта.
 - **Упоминания без username:** `entity_text(text, entity)` — текст сущности по UTF-16
   offset/length Telegram, не по кодовым точкам Python; `mentions(message)`/`ctx.mentions()`
-  — все кликабельные имена (text_mention) с пользователями внутри.
+  — все кликабельные имена (text_mention) с пользователями внутри; `mention_html(user)` /
+  `mention_html(telegram_id, name)` — собрать такое упоминание самому, имя экранируется само.
 - **Транспорт:** таймауты, повтор при 429, понятные ошибки сети, прокси, `Bot.defaults`;
   типизированные `MessageNotModified`/`MessageToEditNotFound` у `TelegramBadRequest` —
   ловить только то, что действительно можно игнорировать, не весь `except TelegramAPIError`.

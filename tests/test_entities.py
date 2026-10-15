@@ -1,4 +1,7 @@
-from selfrot import BaseContext, Bot, entity_text, mentions
+import pytest
+
+from selfrot import BaseContext, Bot, entity_text, mention_html, mentions
+from selfrot.exceptions import DefinitionError
 from selfrot.filter import HasMention
 from selfrot.types import MessageEntity, User
 
@@ -135,3 +138,31 @@ class TestHasMention:
     async def test_does_not_match_non_message_event(self):
         raw = callback_update("x")  # callback_query — не Message
         assert await HasMention().check(ctx(raw)) is False
+
+
+class TestMentionHtml:
+    def test_from_user_with_last_name(self):
+        user = User(id=42, is_bot=False, first_name="Вася", last_name="Петров")
+        assert mention_html(user) == '<a href="tg://user?id=42">Вася Петров</a>'
+
+    def test_from_user_without_last_name(self):
+        user = User(id=43, is_bot=False, first_name="Оля")
+        assert mention_html(user) == '<a href="tg://user?id=43">Оля</a>'
+
+    def test_from_telegram_id_and_name(self):
+        assert mention_html(99, "Вася из базы") == (
+            '<a href="tg://user?id=99">Вася из базы</a>'
+        )
+
+    def test_name_is_escaped(self):
+        assert mention_html(1, "Имя <из> & базы") == (
+            '<a href="tg://user?id=1">Имя &lt;из&gt; &amp; базы</a>'
+        )
+
+    def test_user_name_is_escaped_too(self):
+        user = User(id=1, is_bot=False, first_name="<b>Вася</b>")
+        assert mention_html(user) == '<a href="tg://user?id=1">&lt;b&gt;Вася&lt;/b&gt;</a>'
+
+    def test_telegram_id_without_name_is_rejected(self):
+        with pytest.raises(DefinitionError, match="name"):
+            mention_html(99)  # type: ignore[call-overload]

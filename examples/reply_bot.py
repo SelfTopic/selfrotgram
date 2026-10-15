@@ -2,7 +2,7 @@ import logging
 import os
 from collections import Counter
 
-from selfrot import BaseContext, BaseDispatcher, Bot, MessageHandler, mentions
+from selfrot import BaseContext, BaseDispatcher, Bot, MessageHandler, mention_html, mentions
 from selfrot.filter import (
     Command,
     HasMention,
@@ -84,8 +84,10 @@ class Warn(MessageHandler[BaseContext[WarnMessage]]):
             return
 
         reason = self.cmd.call(self.ctx).rest or "без причины"
+        # mention_html(user) сам берёт имя из User и экранирует его — кликабельно,
+        # даже если у offender нет username (иначе их вообще нечем было бы упомянуть).
         await self.ctx.message.reply(
-            f"Предупреждение: {offender.first_name} (id {offender.id}), {reason}"
+            f"Предупреждение: {mention_html(offender)}, {reason}", parse_mode="HTML"
         )
 
 
@@ -106,7 +108,12 @@ class WarnByMention(MessageHandler[BaseContext[TextMessage]]):
         # rest включает и сам текст упоминания (это часть команды, не вырезаем): для
         # точного отделения причины понадобились бы entity.offset/length через entity_text.
         reason = self.cmd.call(self.ctx).rest or "без причины"
-        await self.ctx.message.reply(f"Предупреждение: {name} (id {offender.id}), {reason}")
+        # mention_html(id, name) — тот самый клик-текст, что написал/выбрал отправитель
+        # (name уже пришёл из mentions()), а не offender.first_name на текущий момент.
+        await self.ctx.message.reply(
+            f"Предупреждение: {mention_html(offender.id, name)}, {reason}",
+            parse_mode="HTML",
+        )
 
 
 class TextCommand(TextMessage, ReplyTextMessage, frozen=True): ...
