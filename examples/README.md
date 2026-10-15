@@ -26,6 +26,7 @@ BOT_TOKEN=123456:ABC python -m examples.echo_bot  # или из переменн
 | [keyboards_bot.py](keyboards_bot.py) | `InlineKeyboard`, `CallbackPayload`, `.filter()`, `pressed_by` |
 | [fun_bot.py](fun_bot.py) | несколько веток одной команды в одном хендлере: фильтр как декоратор метода, `Command.where(...)`; тот же приём на `CallbackQueryHandler` (квиз с кнопками) |
 | [deep_link_bot.py](deep_link_bot.py) | deep link (`t.me/<bot>?start=...`): `StartPayload`, `.url(bot)`, `Command("start", ..., deep_link=True)` — порядок хендлеров не важен |
+| [tasks_bot.py](tasks_bot.py) | фоновые периодические задачи: `Dispatcher.tasks`, `Every`, `BaseTask` — тот же `ctx` и те же мидлвари, что у хендлера, `ctx.is_background` вместо апдейта |
 | [chat_members.py](chat_members.py) | `MemberJoined`, `MemberLeft` (`chat_member` и `my_chat_member`) |
 | [fsm_bot.py](fsm_bot.py) | многошаговый диалог: `States`, типизированные данные, `InState`, TTL |
 | [webhook_bot.py](webhook_bot.py) | вебхук и поллинг из одного кода, `on_startup`/`on_shutdown`, `Bot.defaults` |

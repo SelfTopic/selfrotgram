@@ -44,6 +44,12 @@ def _write_new(path: Path, data: bytes) -> Path:
 class BaseContext(ContextMethods[TEvent]):
     update: Update
     bot: Bot
+    # Фоновая задача (Dispatcher.tasks), не апдейт: update тогда пустой (только
+    # update_id), а это — честный сигнал об этом, не угадывание по пустым полям.
+    # Не аргумент конструктора по той же причине, что и _fsm ниже: пользовательские
+    # контексты добавляют свои обязательные поля после всех полей BaseContext,
+    # а поле с default тут сломало бы их (non-default argument follows default).
+    is_background: bool = field(default=False, init=False)
     # Прикрепляет диспетчер. Не аргумент конструктора: пользовательские контексты
     # собираются как self.context(update, api, сервисы...) и ничего не замечают.
     _fsm: FSM | None = field(default=None, init=False, repr=False, compare=False)

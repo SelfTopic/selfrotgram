@@ -22,6 +22,7 @@ EXAMPLES = [  # у каждого есть хендлеры
     ("examples.deferred_bot", "Dispatcher", None),
     ("examples.fun_bot", "Dispatcher", None),
     ("examples.deep_link_bot", "Dispatcher", None),
+    ("examples.tasks_bot", "Dispatcher", None),
     ("examples.webhook_bot", "Dispatcher", None),
     ("examples.db_bot", "Dispatcher", "sqlalchemy"),
     ("examples.bot_command.dispatcher", "AppDispatcher", "sqlalchemy"),
@@ -414,6 +415,31 @@ async def test_deep_link_bot_proposal_and_marriage(telegram):
     await feed(dp, message_update("/start invite_abc"))
     assert telegram.sent == []
 
+    await dp.api.close_session()
+
+
+async def test_tasks_bot_tracks_chats_and_reports_in_the_background(telegram, caplog):
+    import asyncio
+    import logging
+
+    from examples.tasks_bot import ACTIVE_CHATS, Dispatcher
+
+    from .conftest import message_update
+
+    ACTIVE_CHATS.clear()  # общий module-level set, переживает тесты
+    dp = Dispatcher(token="123456:TEST-token")
+
+    await feed(dp, message_update("/hello", chat=5))
+    assert telegram.sent[-1]["text"] == "Привет! Запомнил этот чат."
+    assert ACTIVE_CHATS == {5}
+
+    with caplog.at_level(logging.INFO):
+        dp._start_tasks()
+        await asyncio.sleep(0.05)  # Every(5, ...) ещё не должен сработать сам
+        await dp._run_task_once(dp.tasks[0])  # дёргаем вручную, не ждать 5 секунд
+        await dp._stop_tasks()
+
+    assert "Активных чатов: 1" in caplog.text
     await dp.api.close_session()
 
 

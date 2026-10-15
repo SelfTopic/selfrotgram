@@ -1000,6 +1000,56 @@ class AcceptMarriage(MessageHandler[BaseContext[TextMessage]]):
 ему то же, что `CallbackPayload` даёт кнопкам — типы вместо ручной сборки строки, только со
 своим, более узким алфавитом, который проверяет сама библиотека.
 
+## 19. `tasks_bot`: фоновые периодические задачи
+
+**Что делает:** раз в 5 секунд печатает в лог, сколько разных чатов написали боту `/hello`.
+**Попробуйте:** напишите `/hello` из пары чатов, подождите — в консоли появится отчёт.
+
+У хендлера есть `ctx`, прошедший мидлвари диспетчера: сессия БД, сервисы — всё, что мидлварь
+заводит в `pre_handle` и закрывает в `post_handle`. У фоновой периодической работы (проверить
+просроченное, обновить кеш раз в сутки) такого `ctx` не было вовсе — только то, что код
+заводил себе сам, вручную, в обход мидлварей. `Dispatcher.tasks` закрывает именно это:
+
+```python
+class ReportActiveChats(BaseTask[BaseContext]):
+    async def run(self) -> None:
+        logging.info("Активных чатов: %s", len(ACTIVE_CHATS))
+
+class Dispatcher(BaseDispatcher[BaseContext]):
+    middlewares = (TrackActivity,)
+    tasks = (Every(5, ReportActiveChats),)
+```
+
+`self.ctx` у задачи — **то же самое**, что у хендлера, и прошло **те же мидлвари** диспетчера
+(`pre_handle`/`post_handle` отработали, сессия БД и сервисы на месте). Разница ровно одна:
+апдейта за этим вызовом нет, и `ctx.is_background` об этом честно говорит — не нужно гадать
+по тому, что `ctx.chat`/`ctx.user` оказались `None` (это могло бы значить что угодно, вплоть
+до баг в коде), флаг говорит прямо. Мидлварь в примере проверяет его явно:
+
+```python
+async def post_handle(self, exc=None) -> None:
+    if not self.ctx.is_background and self.ctx.chat is not None:
+        ACTIVE_CHATS.add(self.ctx.chat.id)
+```
+
+**Старт и остановка — забота диспетчера**, не `__main__.py`: `Every(interval, Задача)` в
+`tasks` запускается вместе с `on_startup()` (после `polling()`/`webhook()`) и останавливается
+вместе с `on_shutdown()`. Остановка не обрывает задачу, которая уже начала работать: досыпающую
+прерывает сразу, работающую — ждёт, как и обычный хендлер при остановке бота.
+
+**Ошибка в задаче** — `on_error` у самой задачи (как у хендлера), не обработали сами —
+дальше, в `on_error` диспетчера:
+
+```python
+class ReportActiveChats(BaseTask[BaseContext]):
+    async def run(self) -> None: ...
+    async def on_error(self, exc: Exception) -> None:
+        logging.exception("Отчёт не собрался")   # не раз в день будить админа из-за этого
+```
+
+**Запомните:** фоновая задача — тот же механизм, что хендлер (ctx, мидлвари, `on_error`), минус
+апдейт; `ctx.is_background` — явный, не угадываемый по пустым полям сигнал об этом.
+
 ---
 
 ## Что читать дальше

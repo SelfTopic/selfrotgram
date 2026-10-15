@@ -13,6 +13,7 @@ from .keyboard import InlineKeyboard, button
 from .middleware import BaseMiddleware
 from .router import BaseRouter
 from .start_payload import StartPayload
+from .tasks import BaseTask, Every
 from .view import Pagination, View, ViewContent
 
 try:
@@ -26,11 +27,13 @@ __all__ = [
     "BaseHandler",
     "BaseMiddleware",
     "BaseRouter",
+    "BaseTask",
     "Bot",
     "BotDefaults",
     "CallbackPayload",
     "CommandArgs",
     "Deferred",
+    "Every",
     "InlineKeyboard",
     "MemoryStorage",
     "MessageHandler",

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import signal
-from collections.abc import AsyncGenerator, Awaitable, Hashable
+from collections.abc import AsyncGenerator, Awaitable, Hashable, Sequence
 from functools import partial
 from typing import (
     Any,
@@ -24,6 +24,8 @@ from ..exceptions import (
 from ..fsm import FSM, MemoryStorage, Storage
 from ..handlers import BaseHandler
 from ..router import BaseRouter
+from ..router.base import _run_middlewares
+from ..tasks import Every
 from ..types import CallbackQuery, Update
 from .runner import UpdateRunner
 from .webhook import WebhookApp, check_secret_token
@@ -72,6 +74,10 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
     # defer даёт DeferredLimitError. Не связано со слотами апдейтов: отложенное ждёт
     # уже после того, как слот освободился.
     max_deferred: int = 1000
+    # Фоновые периодические задачи (ctx, прошедший мидлвари диспетчера, но без
+    # апдейта): tasks = (Every(30, MarriageExpiry), Every(3600 * 24, MediaToolsUpdate)).
+    # Старт и остановка — вместе с polling()/webhook(), отдельно не нужно.
+    tasks: Sequence[Every] = ()
 
     def __init__(self, token: str | None = None) -> None:
         """
@@ -84,6 +90,8 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
         # Свой экземпляр на диспетчер: общий на уровне класса делили бы все диспетчеры.
         self._fsm_storage: Storage = self.fsm_storage or MemoryStorage()
         self._background = BackgroundTasks(self.max_deferred)
+        self._task_runners: list[asyncio.Task[None]] = []
+        self._stopping = asyncio.Event()
 
     async def poll_updates(self) -> AsyncGenerator[Update, None]:
 
@@ -275,9 +283,52 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
             self.ordering_key(ctx), partial(self._handle, ctx)
         )
 
+    def _start_tasks(self) -> None:
+        self._stopping.clear()
+        for every in self.tasks:
+            self._task_runners.append(asyncio.create_task(self._run_every(every)))
+
+    async def _run_every(self, every: Every) -> None:
+        while True:
+            try:
+                await asyncio.wait_for(self._stopping.wait(), timeout=every.interval)
+                return  # попросили остановиться, пока задача спала
+            except TimeoutError:
+                pass
+
+            await self._run_task_once(every)
+
+    async def _run_task_once(self, every: Every) -> None:
+        # update_id=0: апдейта за этой задачей нет вовсе, это не какой-то конкретный
+        # «нулевой» апдейт — просто единственное обязательное поле Update.
+        ctx = self.create_context(Update(update_id=0))
+        ctx.is_background = True
+        ctx._background = self._background
+        task = every.task_cls(ctx)
+
+        try:
+            try:
+                try:
+                    await _run_middlewares(self.middlewares, ctx, task.run)
+                except Exception as exc:  # noqa: BLE001 - граница: дальше своя обработка
+                    await task.on_error(exc)
+            except Exception as exc:  # noqa: BLE001 - не обработал сам: выше, как у хендлера
+                await self.on_error(ctx, exc)
+        except Exception:
+            logger.exception(
+                "on_error диспетчера упал на фоновой задаче %s", type(task).__name__
+            )
+
+    async def _stop_tasks(self) -> None:
+        self._stopping.set()
+        if self._task_runners:
+            await asyncio.wait(self._task_runners)
+        self._task_runners.clear()
+
     async def _stop(self, started: bool) -> None:
         logger.info("Остановка: дожидаюсь начатых хендлеров")
         try:
+            await self._stop_tasks()
             await self._runner.drain()
             await self._background.drain(self.shutdown_timeout)
             if started:
@@ -292,6 +343,7 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
 
             started = True
             await self.on_startup()
+            self._start_tasks()
 
             logger.info("Запущен @%s, жду апдейты (long polling)", self.api.username)
             async for update in self.poll_updates():
@@ -325,6 +377,7 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
 
             started = True
             await self.on_startup()
+            self._start_tasks()
 
             app = WebhookApp(
                 self.try_feed_update, path, secret_token, bot=self.api
