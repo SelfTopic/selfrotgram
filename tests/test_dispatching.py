@@ -15,6 +15,7 @@ from selfrot.dispatcher import order_by_chat, order_by_user
 from selfrot.dispatcher.runner import UpdateRunner
 from selfrot.exceptions import DefinitionError, RouterError
 from selfrot.filter import Text
+from selfrot.handlers import CallbackQueryHandler
 
 from .conftest import FakeTelegram, bind, callback_update, message_update
 
@@ -302,6 +303,85 @@ class TestErrors:
             await feed(self.dispatcher(Cancelled), message_update("x"))
         assert "on_error вызван" not in log
         assert "db:post(CancelledError)" in log
+
+
+class TestUnhandledCallback:
+    """callback_query без единого подошедшего хендлера — «часики» на кнопке иначе
+    крутятся бесконечно (ни один other апдейт такой видимой цены не имеет)."""
+
+    def bare(self) -> BaseDispatcher:
+        class Root(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+
+        return make(Root)
+
+    async def test_default_answers_and_warns(self, telegram: FakeTelegram, caplog):
+        await feed(self.bare(), callback_update("нет такого хендлера"))
+        assert telegram.calls == [("answerCallbackQuery", {"callback_query_id": "cq1"})]
+        assert "не достался ни одному хендлеру" in caplog.text
+
+    async def test_unmatched_message_stays_silent(self, telegram: FakeTelegram):
+        # Для остальных видов апдейта тишина — норма, не нужен отдельный хук.
+        await feed(self.bare(), message_update("нет такой команды"))
+        assert telegram.calls == []
+
+    async def test_matched_callback_does_not_trigger_the_hook(
+        self, telegram: FakeTelegram
+    ):
+        class Press(CallbackQueryHandler[BaseContext]):
+            async def handle(self):
+                log.append("handle:press")
+
+        class Root(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+            handlers = (Press,)
+
+        await feed(make(Root), callback_update("x"))
+        assert log == ["handle:press"]
+        assert telegram.calls == []  # хендлер сам не ответил — и это его дело, не хук
+
+    async def test_overridden_hook_replaces_the_default(self, telegram: FakeTelegram):
+        class Root(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+
+            async def on_unhandled_callback(self, ctx, callback_query):
+                await ctx.answer_callback_query("Устарела", show_alert=True)
+
+        await feed(make(Root), callback_update("x"))
+        _, body = telegram.last()
+        assert body == {
+            "callback_query_id": "cq1",
+            "text": "Устарела",
+            "show_alert": True,
+        }
+
+    async def test_disabled_hook_stays_silent(self, telegram: FakeTelegram):
+        class Root(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+
+            async def on_unhandled_callback(self, ctx, callback_query):
+                pass
+
+        await feed(make(Root), callback_update("x"))
+        assert telegram.calls == []
+
+    async def test_failing_hook_goes_through_on_error(self, telegram: FakeTelegram):
+        class Root(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+
+            async def on_unhandled_callback(self, ctx, callback_query):
+                raise RuntimeError("хук сам упал")
+
+            async def on_error(self, ctx, exc):
+                log.append(f"on_error:{exc}")
+
+        await feed(make(Root), callback_update("x"))
+        assert log == ["on_error:хук сам упал"]
 
 
 class TestRunner:

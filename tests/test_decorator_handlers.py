@@ -123,8 +123,10 @@ class TestCallbackQueryHandlerBranches:
         assert body["text"] == "Ты выбрал: Человек"
 
     async def test_unmatched_option_falls_through(self, telegram: FakeTelegram):
+        # Ни одна ветка не подошла — апдейт не достался ни одному хендлеру, но
+        # дефолтный on_unhandled_callback всё равно закрывает «часики» на кнопке.
         await feed(self.dispatcher(), callback_update("quiz:1:99"))
-        assert telegram.calls == []
+        assert telegram.calls == [("answerCallbackQuery", {"callback_query_id": "cq1"})]
 
 
 class TestDefinitionErrors:

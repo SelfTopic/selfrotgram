@@ -24,7 +24,7 @@ from ..exceptions import (
 from ..fsm import FSM, MemoryStorage, Storage
 from ..handlers import BaseHandler
 from ..router import BaseRouter
-from ..types import Update
+from ..types import CallbackQuery, Update
 from .runner import UpdateRunner
 from .webhook import WebhookApp, check_secret_token
 
@@ -160,6 +160,26 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
             "Ошибка при обработке update %s", ctx.update.update_id, exc_info=exc
         )
 
+    async def on_unhandled_callback(
+        self, ctx: TContext, callback_query: CallbackQuery
+    ) -> None:
+        """
+        Нажатие кнопки (callback_query) не досталось ни одному хендлеру ни в одном
+        роутере — до ответа Telegram крутит «часики» на самой кнопке, и без ответа
+        они крутятся бесконечно: пользователь не поймёт, сработало нажатие или нет.
+        Для остальных видов апдейта такая тишина — норма (что не подошло ни одному
+        хендлеру, то и не подошло), а здесь у неё есть видимые последствия.
+
+        По умолчанию — предупреждение в лог (стоит заметить при разработке: забытый
+        catch-all, устаревшая или чужая кнопка, опечатка в фильтре) и пустой
+        `answer_callback_query()`, который эти часики останавливает. Переопределяется:
+        свой алерт пользователю или вообще ничего не делать (пустое тело).
+        """
+        logger.warning(
+            "callback_query %s не достался ни одному хендлеру", callback_query.id
+        )
+        await self.api.answer_callback_query(callback_query_id=callback_query.id)
+
     def fsm_key(self, ctx: TContext) -> str | None:
         """
         Чей это диалог. По умолчанию «чат:пользователь»: в группе у каждого участника
@@ -185,6 +205,8 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
         try:
             try:
                 handler = await self.propagate(ctx)
+                if handler is None and (callback_query := ctx.update.callback_query):
+                    await self.on_unhandled_callback(ctx, callback_query)
             except Exception as exc:  # noqa: BLE001 - граница: дальше своя обработка
                 await self.on_error(ctx, exc)
         except Exception:
