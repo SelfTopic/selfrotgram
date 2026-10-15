@@ -43,16 +43,29 @@ def _inherits_handle(cls: type) -> bool:
 
 
 def _header_payload_type(cls: type) -> type[BaseModel] | None:
-    """Тип из заголовка: MessageHandler[AppContext[TextMessage]] -> TextMessage."""
-    for base in getattr(cls, "__orig_bases__", ()):
-        origin = typing.get_origin(base)
-        if not (isinstance(origin, type) and issubclass(origin, BaseHandler)):
-            continue
+    """
+    Тип из заголовка: MessageHandler[AppContext[TextMessage]] -> TextMessage. Ищет не
+    только среди собственных оснований cls, а по всей цепочке наследования (до самого
+    BaseHandler, не считая его) — миксин тоже может писать MessageHandler[...] как своё
+    основание, не обязательно финальному классу (обычный generic-класс, никакого особого
+    правила). vars(base) — свои __orig_bases__, не унаследованные: обычный getattr нашёл
+    бы только ближайший класс, где они вообще есть, и застрял бы на нём, даже если там не
+    та форма (миксин со своей дженерик-частью, например MessageHandler[...], Generic[T]).
+    Побеждает первый найденный — ближайший в MRO, то есть сам cls, если он его задаёт.
+    """
+    for base in cls.__mro__:
+        if base is BaseHandler:
+            break
 
-        for ctx_type in typing.get_args(base):
-            ctx_args = typing.get_args(ctx_type)
-            if ctx_args and is_bot_api_type(ctx_args[0]):
-                return ctx_args[0]
+        for orig_base in vars(base).get("__orig_bases__", ()):
+            origin = typing.get_origin(orig_base)
+            if not (isinstance(origin, type) and issubclass(origin, BaseHandler)):
+                continue
+
+            for ctx_type in typing.get_args(orig_base):
+                ctx_args = typing.get_args(ctx_type)
+                if ctx_args and is_bot_api_type(ctx_args[0]):
+                    return ctx_args[0]
 
     return None
 

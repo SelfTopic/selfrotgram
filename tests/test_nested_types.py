@@ -1,6 +1,6 @@
 """Условия над ответом на сообщение: Reply[...], HasReply*, пути в required_fields."""
 
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 import pytest
 
@@ -247,6 +247,56 @@ class TestHandlerHeader:
             query = RepliesToAdmin()
 
             async def handle(self): ...
+
+
+class TestHeaderFromMixin:
+    """Заголовок ищется по всей цепочке наследования, не только среди оснований самого
+    класса — миксин может нести MessageHandler[...] сам, обычным generic-классом."""
+
+    def test_mixin_itself_is_not_validated_while_still_generic(self):
+        TContext = TypeVar("TContext", bound=BaseContext)
+
+        class RepliedTargetHandler(MessageHandler[TContext], Generic[TContext]):
+            """Сам по себе ничего не обещает: TContext ещё не подставлен, промежуточный
+            класс не инстанцируется напрямую — падать здесь не на чем и не нужно."""
+
+            async def handle(self): ...
+
+    def test_final_class_does_not_repeat_messagehandler(self):
+        TContext = TypeVar("TContext", bound=BaseContext)
+
+        class RepliedTargetHandler(MessageHandler[TContext], Generic[TContext]):
+            async def handle(self): ...
+
+        class Concrete(RepliedTargetHandler[BaseContext[ReplyUserMessage]]):
+            query = HasReplyUser()
+
+        assert Concrete.query is not None  # дошли до этой строки — заголовок проверился
+
+    def test_mismatch_through_a_mixin_still_raises(self):
+        TContext = TypeVar("TContext", bound=BaseContext)
+
+        class RepliedTargetHandler(MessageHandler[TContext], Generic[TContext]):
+            async def handle(self): ...
+
+        with pytest.raises(DefinitionError, match="reply_to_message.user"):
+
+            class Liar(RepliedTargetHandler[BaseContext[ReplyUserMessage]]):
+                query = HasReplyToMessage()
+
+    def test_own_header_on_the_final_class_still_wins_first(self):
+        # Старый стиль (chestor_bot): миксин вовсе не наследует BaseHandler, финальный
+        # класс сам пишет MessageHandler[...] — остаётся рабочим без изменений.
+        class PerformMixin:
+            async def perform(self) -> None: ...
+
+            async def handle(self) -> None:
+                await self.perform()
+
+        class Final(PerformMixin, MessageHandler[BaseContext[ReplyUserMessage]]):
+            query = HasReplyUser()
+
+        assert Final.query is not None
 
 
 class TestTree:

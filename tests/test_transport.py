@@ -9,6 +9,9 @@ from selfrot import Bot, BotDefaults
 from selfrot.client.telegram import TELEGRAM_API
 from selfrot.exceptions import (
     ConfigError,
+    MessageNotModified,
+    MessageToEditNotFound,
+    TelegramBadRequest,
     TelegramNetworkError,
     TelegramRetryAfter,
     TelegramServerError,
@@ -106,6 +109,36 @@ class TestErrors:
             assert "secret" not in str(info.value)
         finally:
             await api.close_session()
+
+    def bad_request(self, telegram: FakeTelegram, name: str, description: str) -> None:
+        telegram.on(
+            name,
+            lambda _b: web.json_response(
+                {"ok": False, "error_code": 400, "description": description}, status=400
+            ),
+        )
+
+    async def test_message_is_not_modified_has_its_own_type(self, telegram, fast):
+        self.bad_request(
+            telegram,
+            "boom",
+            "Bad Request: message is not modified: specified new message content and "
+            "reply markup are exactly the same as a current content and reply markup "
+            "of the message",
+        )
+        with pytest.raises(MessageNotModified):
+            await fast.call(method("boom"))
+
+    async def test_message_to_edit_not_found_has_its_own_type(self, telegram, fast):
+        self.bad_request(telegram, "boom", "Bad Request: message to edit not found")
+        with pytest.raises(MessageToEditNotFound):
+            await fast.call(method("boom"))
+
+    async def test_unrelated_bad_request_stays_the_base_type(self, telegram, fast):
+        self.bad_request(telegram, "boom", "Bad Request: chat not found")
+        with pytest.raises(TelegramBadRequest) as info:
+            await fast.call(method("boom"))
+        assert not isinstance(info.value, (MessageNotModified, MessageToEditNotFound))
 
 
 class TestFloodControl:

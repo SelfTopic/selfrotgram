@@ -134,10 +134,11 @@ class TelegramAPIError(SelfrotError):
     @classmethod
     def from_response(cls, method: str, response: dict[str, Any]) -> "TelegramAPIError":
         code = int(response.get("error_code", 0))
+        description = response.get("description", "")
         error_type: type[TelegramAPIError] = TelegramAPIError
 
         if code == 400:
-            error_type = TelegramBadRequest
+            error_type = _bad_request_subtype(description)
         elif code == 401:
             error_type = TelegramUnauthorized
         elif code == 403:
@@ -151,12 +152,43 @@ class TelegramAPIError(SelfrotError):
         elif code >= 500:
             error_type = TelegramServerError
 
-        return error_type(
-            method, code, response.get("description", ""), response.get("parameters")
-        )
+        return error_type(method, code, description, response.get("parameters"))
 
 
 class TelegramBadRequest(TelegramAPIError): ...
+
+
+class MessageNotModified(TelegramBadRequest):
+    """
+    Новое содержимое (текст и/или клавиатура) совпадает с уже отправленным — Telegram
+    не считает это правкой и отказывает. Обычно безопасно игнорировать: сообщение и так
+    уже выглядит так, как нужно.
+    """
+
+
+class MessageToEditNotFound(TelegramBadRequest):
+    """
+    Сообщение, которое правите или удаляете, уже недоступно (удалено пользователем,
+    слишком старое, или это не сообщение бота). Обычно безопасно игнорировать: цели
+    (убрать клавиатуру, поправить текст) уже некуда применять.
+    """
+
+
+# (искать в description, тип) — первое совпадение побеждает; description у Telegram
+# всегда начинается с "Bad Request: ", но ищем без привязки к точному префиксу/регистру.
+_BAD_REQUEST_SUBTYPES: tuple[tuple[str, type[TelegramBadRequest]], ...] = (
+    ("message is not modified", MessageNotModified),
+    ("message to edit not found", MessageToEditNotFound),
+)
+
+
+def _bad_request_subtype(description: str) -> type[TelegramBadRequest]:
+    lowered = description.lower()
+    for needle, subtype in _BAD_REQUEST_SUBTYPES:
+        if needle in lowered:
+            return subtype
+
+    return TelegramBadRequest
 
 
 class TelegramUnauthorized(TelegramAPIError): ...
