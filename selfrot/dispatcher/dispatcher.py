@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 from aiohttp import web
 
 from ..client import Bot
+from ..client.bot import CallbackAnswerTracking, current_callback_answer
 from ..context import TContext
 from ..deferred import BackgroundTasks, Deferred
 from ..exceptions import (
@@ -207,19 +208,34 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
 
         ctx._background = self._background
 
+        # Если апдейт — callback_query, здесь отметится, ответил ли на него кто-то
+        # (хендлер, мидлварь — что угодно, что дошло до Bot.call) уже в процессе
+        # обработки. Нужно ниже: мидлварь могла сама ответить и остановить апдейт
+        # (BanMiddleware и подобные) — тогда дефолтный on_unhandled_callback не должен
+        # слать ответ вслепую второй раз.
+        callback_query = ctx.update.callback_query
+        tracking = CallbackAnswerTracking(callback_query.id) if callback_query else None
+        answer_token = current_callback_answer.set(tracking)
+
         # Ошибка одного апдейта (в том числе сеть при ответе, и даже сам on_error)
         # не должна ронять бота.
         handler = None
         try:
             try:
                 handler = await self.propagate(ctx)
-                if handler is None and (callback_query := ctx.update.callback_query):
+                if (
+                    handler is None
+                    and callback_query is not None
+                    and tracking is not None
+                    and not tracking.answered
+                ):
                     await self.on_unhandled_callback(ctx, callback_query)
             except Exception as exc:  # noqa: BLE001 - граница: дальше своя обработка
                 await self.on_error(ctx, exc)
         except Exception:
             logger.exception("on_error упал на update %s", ctx.update.update_id)
         finally:
+            current_callback_answer.reset(answer_token)
             # Хендлер и мидлвари закрыты. Отложенное стартует только после успеха
             # (как on_commit): при ошибке, отмене или отсутствии хендлера записанные
             # вызовы отбрасываются.

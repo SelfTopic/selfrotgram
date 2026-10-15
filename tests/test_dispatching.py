@@ -383,6 +383,67 @@ class TestUnhandledCallback:
         await feed(make(Root), callback_update("x"))
         assert log == ["on_error:хук сам упал"]
 
+    async def test_middleware_answering_and_stopping_does_not_get_a_second_answer(
+        self, telegram: FakeTelegram
+    ):
+        # Баг 0.1.9: мидлварь сама ответила алертом и остановила апдейт (pre_handle
+        # -> False) — дефолтный хук не должен слать второй answerCallbackQuery
+        # (Telegram на второй ответ тому же callback_query отдаёт ошибку).
+        class BanMiddleware(Trace):
+            async def pre_handle(self) -> bool:
+                await self.ctx.answer_callback_query("Вы заблокированы", show_alert=True)
+                return False
+
+        class Root(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+            middlewares = (BanMiddleware,)
+
+        await feed(make(Root), callback_update("x"))
+        answers = [b for m, b in telegram.calls if m == "answerCallbackQuery"]
+        assert answers == [
+            {"callback_query_id": "cq1", "text": "Вы заблокированы", "show_alert": True}
+        ]
+
+    async def test_middleware_stopping_silently_still_gets_the_default_answer(
+        self, telegram: FakeTelegram
+    ):
+        # Остановившая мидлварь могла и не ответить — часики всё равно должны
+        # остановиться, различать "хендлера нет" и "мидлварь остановила" недостаточно.
+        class SilentStop(Trace):
+            async def pre_handle(self) -> bool:
+                return False
+
+        class Root(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+            middlewares = (SilentStop,)
+
+        await feed(make(Root), callback_update("x"))
+        assert telegram.calls == [("answerCallbackQuery", {"callback_query_id": "cq1"})]
+
+    async def test_answer_to_a_different_callback_query_does_not_count(
+        self, telegram: FakeTelegram
+    ):
+        # Отслеживание — по callback_query_id текущего апдейта, не "хоть что-то
+        # ответили": ответ на чужой id не должен гасить дефолтный хук этого апдейта.
+        class AnswersSomeoneElse(Trace):
+            async def pre_handle(self) -> bool:
+                await self.ctx.bot.answer_callback_query(callback_query_id="другой-id")
+                return False
+
+        class Root(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+            middlewares = (AnswersSomeoneElse,)
+
+        await feed(make(Root), callback_update("x"))
+        answers = [b for m, b in telegram.calls if m == "answerCallbackQuery"]
+        assert answers == [
+            {"callback_query_id": "другой-id"},
+            {"callback_query_id": "cq1"},
+        ]
+
 
 class TestRunner:
     async def test_different_keys_run_in_parallel(self):

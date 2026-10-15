@@ -1,6 +1,8 @@
 import asyncio
+import contextvars
 import logging
 import re
+from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from pydantic import TypeAdapter
@@ -22,6 +24,27 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 _TOKEN = re.compile(r"\d+:[A-Za-z0-9_-]+")
+
+
+@dataclass
+class CallbackAnswerTracking:
+    """
+    Пока апдейт — callback_query, здесь отмечается, ответили ли на НЕГО уже
+    (answerCallbackQuery с тем же callback_query_id через Bot.call — неважно, кто
+    позвал: хендлер, мидлварь, что угодно). Нужно диспетчеру: мидлварь могла сама
+    ответить и остановить апдейт (BanMiddleware и подобные) — тогда дефолтный
+    on_unhandled_callback не должен слать второй ответ вслепую.
+    """
+
+    callback_query_id: str
+    answered: bool = False
+
+
+# Один на задачу asyncio (апдейт из UpdateRunner.submit всегда в своей create_task),
+# поэтому параллельная обработка других апдейтов не видит и не портит это значение.
+current_callback_answer: contextvars.ContextVar[CallbackAnswerTracking | None] = (
+    contextvars.ContextVar("current_callback_answer", default=None)
+)
 
 _adapters: dict[Any, TypeAdapter[Any]] = {}
 
@@ -105,6 +128,13 @@ class Bot(BotMethods):
                 continue
 
             raise error
+
+        if method.__api_method__ == "answerCallbackQuery":
+            tracking = current_callback_answer.get()
+            if tracking is not None and tracking.callback_query_id == getattr(
+                method, "callback_query_id", None
+            ):
+                tracking.answered = True
 
         # context: объекты запоминают бота, поэтому message.answer() работает без ctx.
         return _adapter(method.__returning__).validate_python(
