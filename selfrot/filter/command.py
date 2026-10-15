@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar, cast, overload
 
@@ -6,8 +7,13 @@ from pydantic import ValidationError
 from ..command_args import CommandArgs
 from ..context import BaseContext
 from ..exceptions import ArgProblem, CommandArgsError, DefinitionError, FilterMatchError
+from ..start_payload import StartPayload
 from ..types import Message, TextMessage
 from .base import BaseFilter, Guarantee
+
+# Единственный алфавит, который Telegram пропускает в t.me/<bot>?start=... (см.
+# start_payload.py); чтобы Command("start") без модели не забирал чужой deep link.
+_DEEP_LINK_TOKEN = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 @dataclass(frozen=True)
@@ -20,6 +26,7 @@ class CommandCall:
 
 
 TArgs = TypeVar("TArgs", bound=CommandArgs)
+TStart = TypeVar("TStart", bound=StartPayload)
 # Ковариантный, чтобы AnyCommand с командами разных моделей давал `A | B`.
 TParsed = TypeVar("TParsed", covariant=True)
 
@@ -50,6 +57,21 @@ class Command(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):
 
     Аргументы в хендлере: parse(ctx) — явно, как match(ctx) у регулярных выражений.
     call(ctx) — сырой разбор (префикс, слова, остаток) для обоих вариантов.
+
+    deep_link=True — у команды "start" особый смысл: параметр ссылки t.me/<bot>?
+    start=..., который Telegram подставляет как весь остаток /start. Без модели —
+    голый /start не заберёт чужую ссылку (ей займётся свой Command(..., deep_link=True)
+    ниже или выше по списку, порядок не важен):
+
+        start = Command("start", deep_link=True)              # не трогает /start marry_5
+
+    С моделью StartPayload — parse(ctx) возвращает её, как обычная команда:
+
+        class MarryLink(StartPayload, prefix="marry"):
+            proposal_id: int
+
+        marry = Command("start", MarryLink, deep_link=True)
+        args = marry.parse(ctx)                                # MarryLink: proposal_id уже int
     """
 
     guarantees = TextMessage
@@ -60,6 +82,7 @@ class Command(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):
         name: str,
         *,
         args_count: int | None = None,
+        deep_link: bool = False,
         prefixes: str = "/",
         ignore_case: bool = False,
     ) -> None: ...
@@ -75,13 +98,25 @@ class Command(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):
         ignore_case: bool = False,
     ) -> None: ...
 
+    @overload
+    def __init__(
+        self: "Command[TStart]",
+        name: str,
+        args: type[TStart],
+        *,
+        deep_link: bool,
+        prefixes: str = "/",
+        ignore_case: bool = False,
+    ) -> None: ...
+
     def __init__(
         self,
         name: str,
-        args: type[CommandArgs] | None = None,
+        args: type[CommandArgs] | type[StartPayload] | None = None,
         *,
         args_count: int | None = None,
         strict: bool = False,
+        deep_link: bool = False,
         prefixes: str = "/",
         ignore_case: bool = False,
     ) -> None:
@@ -90,7 +125,32 @@ class Command(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):
                 f"Command({name!r}): число аргументов берётся из модели, args_count не нужен"
             )
 
+        is_start_payload = args is not None and issubclass(args, StartPayload)
+        if is_start_payload and not deep_link:
+            raise DefinitionError(
+                f"Command({name!r}): модели StartPayload нужен deep_link=True "
+                "(это deep link, не обычные аргументы команды)"
+            )
+        if deep_link:
+            if args is not None and not is_start_payload:
+                raise DefinitionError(
+                    f"Command({name!r}): deep_link=True — модель аргументов должна "
+                    "быть StartPayload, а не CommandArgs: deep link это один токен "
+                    "без пробелов, а не слова через пробел"
+                )
+            if args_count is not None:
+                raise DefinitionError(
+                    f"Command({name!r}): deep_link=True не считает слова, "
+                    "args_count не нужен"
+                )
+            if strict:
+                raise DefinitionError(
+                    f"Command({name!r}): deep_link=True и так не подходит чужому "
+                    "payload, strict не нужен"
+                )
+
         self.args_model = args
+        self.deep_link = deep_link
         self.strict = strict
         self.words = tuple(name.split())
         if not self.words:
@@ -186,7 +246,10 @@ class Command(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):
     def usage(self) -> str:
         """Как вызывать: «/calc <one> <operator: +|-|*|/> <two>»."""
         head = f"{self.prefixes[0]}{self.name}"
-        return self.args_model.usage(head) if self.args_model else head
+        if self.args_model is None or self.deep_link:
+            return head  # у StartPayload нет usage(): deep link не набирают руками
+
+        return cast(type[CommandArgs], self.args_model).usage(head)
 
     @staticmethod
     def _is_me(ctx: BaseContext[Any], mention: str) -> bool:
@@ -199,13 +262,25 @@ class Command(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):
         if call is None:
             return False
 
+        if self.deep_link:
+            return self._deep_link_matches(call.rest)
+
         if self.strict and self.args_model is not None:
             try:
-                self._bind(call, self.args_model)
+                self._bind(call, cast(type[CommandArgs], self.args_model))
             except CommandArgsError:
                 return False
 
         return True
+
+    def _deep_link_matches(self, rest: str) -> bool:
+        if self.args_model is None:
+            # Голый /start: не забирает то, что похоже на чужой deep link — им
+            # займётся Command(..., SomeStartPayload, deep_link=True), где бы он ни
+            # стоял в списке хендлеров (не важен порядок, как раньше).
+            return not (rest and _DEEP_LINK_TOKEN.fullmatch(rest))
+
+        return cast(type[StartPayload], self.args_model).try_unpack(rest) is not None
 
     async def check(self, ctx: BaseContext[Any]) -> bool:
         return self.matches(ctx)
@@ -221,13 +296,17 @@ class Command(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):
     def parse(self, ctx: BaseContext[Any]) -> TParsed:
         """
         Модель аргументов (или CommandCall, если модели нет). Только после успешного
-        check(). Неверные аргументы: CommandArgsError.
+        check(). Неверные аргументы: CommandArgsError (deep_link — никогда: не
+        подошедший payload уже не прошёл check()).
         """
         call = self.call(ctx)
         if self.args_model is None:
             return cast(TParsed, call)
 
-        return cast(TParsed, self._bind(call, self.args_model))
+        if self.deep_link:
+            return cast(TParsed, cast(type[StartPayload], self.args_model).unpack(call.rest))
+
+        return cast(TParsed, self._bind(call, cast(type[CommandArgs], self.args_model)))
 
     def __repr__(self) -> str:
         parts = [repr(self.name)]
@@ -237,6 +316,8 @@ class Command(BaseFilter[BaseContext[TextMessage]], Generic[TParsed]):
             parts.append(f"args_count={self.args_count}")
         if self.strict:
             parts.append("strict=True")
+        if self.deep_link:
+            parts.append("deep_link=True")
         if self.prefixes != ("/",):
             parts.append(f"prefixes={''.join(self.prefixes)!r}")
         if self.ignore_case:

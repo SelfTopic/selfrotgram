@@ -12,6 +12,7 @@ from .handlers import BaseHandler, MessageHandler
 from .keyboard import InlineKeyboard, button
 from .middleware import BaseMiddleware
 from .router import BaseRouter
+from .start_payload import StartPayload
 from .view import Pagination, View, ViewContent
 
 try:
@@ -35,6 +36,7 @@ __all__ = [
     "MessageHandler",
     "Pagination",
     "Rest",
+    "StartPayload",
     "State",
     "States",
     "TEvent",

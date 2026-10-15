@@ -950,6 +950,56 @@ class QuizPressed(CallbackQueryHandler[BaseContext[DataCallbackQuery]]):
 **Запомните:** несколько веток одной команды — не причина заводить несколько классов; фильтр,
 применённый к методу как декоратор, и есть ветка, а первая подошедшая побеждает.
 
+## 18. `deep_link_bot`: ссылка t.me/<bot>?start=...
+
+**Что делает:** `/propose` даёт ссылку на предложение руки и сердца, переход по ней отправляет
+боту `/start marry_<id>` — и бот поздравляет пару.
+**Попробуйте:** `/propose`, скопируйте ссылку из ответа, откройте её (или просто пошлите
+`/start marry_7` вручную — Telegram именно так и превращает переход по ссылке в сообщение).
+
+Deep link — не отдельная сущность Bot API, а синтаксис: Telegram сам переписывает переход по
+`t.me/<bot>?start=payload` в обычное сообщение `/start payload`. Единственная тонкость —
+алфавит параметра: `[A-Za-z0-9_-]`, до 64 символов, иначе Telegram молча портит ссылку (не
+ошибка, а пустой параметр). Это другой алфавит, чем у `callback_data` кнопок (там разрешены
+любые байты), поэтому `StartPayload` — не вариант `CallbackPayload`, а соседний класс с той же
+идеей:
+
+```python
+class MarryLink(StartPayload, prefix="marry"):
+    proposer_id: int
+
+marry = Command("start", MarryLink, deep_link=True)
+
+class Propose(MessageHandler[BaseContext[TextMessage]]):
+    query = Command("propose")
+    async def handle(self):
+        user = self.ctx.message.user
+        link = MarryLink(proposer_id=user.id).url(self.ctx.bot)   # t.me/<bot>?start=marry_7
+        await self.ctx.message.reply(f"Отправь ссылку второй половине:\n{link}")
+
+class AcceptMarriage(MessageHandler[BaseContext[TextMessage]]):
+    query = marry
+    async def handle(self):
+        args = marry.parse(self.ctx)       # MarryLink: proposer_id уже int
+        ...
+```
+
+`.url(bot)` собирает ссылку сам — не нужно руками помнить формат `t.me/{username}?start=...`
+и тем более вручную проверять алфавит и длину (`pack()` упадёт `StartPayloadError`, если
+значение поля выйдет за `[A-Za-z0-9_-]` или итог длиннее 64 символов — до того, как испорченная
+ссылка уйдёт пользователю, а не после).
+
+**Голый `/start` не заберёт чужую ссылку.** `Command("start", deep_link=True)` (без модели)
+устроен так же, как и везде в библиотеке: не подошло — не моё дело, пусть достанется другому.
+«Не моё» здесь значит «похоже на deep-link токен ([A-Za-z0-9_-]+ без пробелов), но это не то,
+что я умею разобрать». Поэтому в примере `Start` стоит **выше** `AcceptMarriage` в `handlers`
+— и это нормально, разбираться в порядке не нужно (до deep_link пришлось бы специально следить,
+чтобы более узкий хендлер с ссылкой стоял раньше общего `/start`).
+
+**Запомните:** deep link это просто `/start` с одним словом особого вида; `StartPayload` даёт
+ему то же, что `CallbackPayload` даёт кнопкам — типы вместо ручной сборки строки, только со
+своим, более узким алфавитом, который проверяет сама библиотека.
+
 ---
 
 ## Что читать дальше

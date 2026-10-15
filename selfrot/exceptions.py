@@ -35,6 +35,14 @@ class CallbackDataError(SelfrotError, ValueError):
     """
 
 
+class StartPayloadError(SelfrotError, ValueError):
+    """
+    Параметр deep link (t.me/<bot>?start=...) не упаковать или не разобрать: длиннее
+    64 символов, символ вне [A-Za-z0-9_-] (единственный алфавит, который Telegram не
+    режет молча), чужой префикс, значение не того типа.
+    """
+
+
 class KeyboardError(SelfrotError, ValueError):
     """Клавиатуру собрать нельзя: пустой или слишком широкий ряд, больше 100 кнопок."""
 

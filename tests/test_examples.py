@@ -21,6 +21,7 @@ EXAMPLES = [  # у каждого есть хендлеры
     ("examples.pagination_bot", "Dispatcher", None),
     ("examples.deferred_bot", "Dispatcher", None),
     ("examples.fun_bot", "Dispatcher", None),
+    ("examples.deep_link_bot", "Dispatcher", None),
     ("examples.webhook_bot", "Dispatcher", None),
     ("examples.db_bot", "Dispatcher", "sqlalchemy"),
     ("examples.bot_command.dispatcher", "AppDispatcher", "sqlalchemy"),
@@ -385,6 +386,33 @@ async def test_fun_bot_branches_and_quiz(telegram):
     await feed(dp, callback_update(buttons[1]["callback_data"]))
     alert = next(b for m, b in telegram.calls if m == "answerCallbackQuery")
     assert alert["text"] == "Ты выбрал: Человек"
+
+    await dp.api.close_session()
+
+
+async def test_deep_link_bot_proposal_and_marriage(telegram):
+    from examples.deep_link_bot import Dispatcher
+
+    from .conftest import message_update
+
+    dp = Dispatcher(token="123456:TEST-token")
+    await dp._load_bot_info()  # bot.username нужен для .url(bot), как перед polling()
+
+    await feed(dp, message_update("/propose"))
+    link = telegram.sent[-1]["text"].splitlines()[-1]
+    assert link == "https://t.me/test_bot?start=marry_7"  # from=7 у message_update
+
+    telegram.clear()
+    await feed(dp, message_update("/start marry_7", uid=99))
+    assert telegram.sent[-1]["text"] == "Поздравляем! Брак заключён между 7 и 99."
+
+    telegram.clear()
+    await feed(dp, message_update("/start"))
+    assert telegram.sent[-1]["text"].startswith("Привет!")
+
+    telegram.clear()  # чужой deep link (не наш prefix) — тишина, не общий /start
+    await feed(dp, message_update("/start invite_abc"))
+    assert telegram.sent == []
 
     await dp.api.close_session()
 
