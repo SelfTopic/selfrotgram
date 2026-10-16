@@ -55,7 +55,7 @@ class TestBaseTask:
             await task.on_error(RuntimeError("боль"))
 
 
-class TestRunTaskOnce:
+class TestRunTask:
     def dispatcher(self, task_cls, **extra) -> BaseDispatcher:
         class Root(BaseDispatcher[BaseContext]):
             bot = Bot
@@ -68,6 +68,24 @@ class TestRunTaskOnce:
 
         return Root(token="1:T")
 
+    async def test_public_and_does_not_need_the_task_to_be_registered_in_tasks(self):
+        # Запрос с продакшена: один прогон для ручного вызова (админ-команда, тест
+        # фоновой задачи) без ожидания интервала — и не обязательно той задачи,
+        # которая вообще стоит в Dispatcher.tasks.
+        class NotRegistered(BaseTask):
+            async def run(self):
+                log.append("ran")
+
+        class Root(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+            # tasks вообще не задан — run_task не привязан к Every/tasks.
+
+        dp = Root(token="1:T")
+        await dp.run_task(NotRegistered)
+        assert log == ["ran"]
+        await dp.api.close_session()
+
     async def test_context_is_flagged_background_and_has_no_update_fields(self):
         seen = {}
 
@@ -78,7 +96,7 @@ class TestRunTaskOnce:
                 seen["user"] = self.ctx.user
 
         dp = self.dispatcher(Inspect)
-        await dp._run_task_once(dp.tasks[0])
+        await dp.run_task(Inspect)
         assert seen == {"is_background": True, "chat": None, "user": None}
         await dp.api.close_session()
 
@@ -88,7 +106,7 @@ class TestRunTaskOnce:
                 log.append("run")
 
         dp = self.dispatcher(Noop)
-        await dp._run_task_once(dp.tasks[0])
+        await dp.run_task(Noop)
         assert log == ["pre(background=True)", "run", "post(None)"]
         await dp.api.close_session()
 
@@ -103,8 +121,8 @@ class TestRunTaskOnce:
                 seen.append(self.ctx)
 
         dp = self.dispatcher(Inspect)
-        await dp._run_task_once(dp.tasks[0])
-        await dp._run_task_once(dp.tasks[0])
+        await dp.run_task(Inspect)
+        await dp.run_task(Inspect)
         assert seen[0] is not seen[1]
         await dp.api.close_session()
 
@@ -117,7 +135,7 @@ class TestRunTaskOnce:
                 log.append(f"task.on_error:{exc}")
 
         dp = self.dispatcher(HandlesItself)
-        await dp._run_task_once(dp.tasks[0])
+        await dp.run_task(HandlesItself)
         assert log[-1] == "task.on_error:упал"
         assert "post(RuntimeError)" in log  # мидлвари видят ошибку, сессия откатится
         await dp.api.close_session()
@@ -131,7 +149,7 @@ class TestRunTaskOnce:
             log.append(f"dispatcher.on_error:{exc}")
 
         dp = self.dispatcher(Unhandled, on_error=on_error)
-        await dp._run_task_once(dp.tasks[0])
+        await dp.run_task(Unhandled)
         assert log[-1] == "dispatcher.on_error:совсем упал"
         await dp.api.close_session()
 
@@ -144,7 +162,7 @@ class TestRunTaskOnce:
             raise KeyError("и on_error упал")
 
         dp = self.dispatcher(Unhandled, on_error=on_error)
-        await dp._run_task_once(dp.tasks[0])  # не бросает наружу
+        await dp.run_task(Unhandled)  # не бросает наружу
         await dp.api.close_session()
 
 

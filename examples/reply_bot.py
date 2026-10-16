@@ -2,7 +2,14 @@ import logging
 import os
 from collections import Counter
 
-from selfrot import BaseContext, BaseDispatcher, Bot, MessageHandler, mention_html, mentions
+from selfrot import (
+    BaseContext,
+    BaseDispatcher,
+    Bot,
+    MessageHandler,
+    mention_html,
+    mentions,
+)
 from selfrot.filter import (
     Command,
     HasMention,
@@ -199,7 +206,9 @@ class PhotoInfo(MessageHandler[BaseContext[PhotoCommand]]):
     query = Command("photo") & HasReplyPhoto() & HasReplyUser()
 
     async def handle(self) -> None:
-        photo = self.ctx.message.reply_to_message  # PhotoAuthor: и photo, и user на месте
+        photo = (
+            self.ctx.message.reply_to_message
+        )  # PhotoAuthor: и photo, и user на месте
         biggest = max(photo.photo, key=lambda size: size.width * size.height)
         await self.ctx.message.reply(
             f"Фото {biggest.width}x{biggest.height} от {photo.user.first_name}."

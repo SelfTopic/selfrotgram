@@ -26,7 +26,7 @@ from ..fsm import FSM, MemoryStorage, Storage
 from ..handlers import BaseHandler
 from ..router import BaseRouter
 from ..router.base import _run_middlewares
-from ..tasks import Every
+from ..tasks import BaseTask, Every
 from ..types import CallbackQuery, Update
 from .runner import UpdateRunner
 from .webhook import WebhookApp, check_secret_token
@@ -312,15 +312,23 @@ class BaseDispatcher(BaseRouter[TContext], Generic[TContext]):
             except TimeoutError:
                 pass
 
-            await self._run_task_once(every)
+            await self.run_task(every.task_cls)
 
-    async def _run_task_once(self, every: Every) -> None:
+    async def run_task(self, task_cls: type[BaseTask[Any]]) -> None:
+        """
+        Один прогон фоновой задачи — тот же ctx, те же мидлвари диспетчера и тот же
+        путь ошибки (task.on_error -> on_error диспетчера), что и у обычного тика
+        Every(...), но сразу, без ожидания интервала. Для ручного запуска (админ-команда,
+        скрипт) и тестов, где ждать реальный Every(3600 * 24, ...) не вариант:
+
+            await dispatcher.run_task(MarriageExpiry)
+        """
         # update_id=0: апдейта за этой задачей нет вовсе, это не какой-то конкретный
         # «нулевой» апдейт — просто единственное обязательное поле Update.
         ctx = self.create_context(Update(update_id=0))
         ctx.is_background = True
         ctx._background = self._background
-        task = every.task_cls(ctx)
+        task = task_cls(ctx)
 
         try:
             try:

@@ -432,7 +432,7 @@ async def test_tasks_bot_tracks_chats_and_reports_in_the_background(telegram, ca
     import asyncio
     import logging
 
-    from examples.tasks_bot import ACTIVE_CHATS, Dispatcher
+    from examples.tasks_bot import ACTIVE_CHATS, Dispatcher, ReportActiveChats
 
     from .conftest import message_update
 
@@ -446,7 +446,7 @@ async def test_tasks_bot_tracks_chats_and_reports_in_the_background(telegram, ca
     with caplog.at_level(logging.INFO):
         dp._start_tasks()
         await asyncio.sleep(0.05)  # Every(5, ...) ещё не должен сработать сам
-        await dp._run_task_once(dp.tasks[0])  # дёргаем вручную, не ждать 5 секунд
+        await dp.run_task(ReportActiveChats)  # дёргаем вручную, не ждать 5 секунд
         await dp._stop_tasks()
 
     assert "Активных чатов: 1" in caplog.text
