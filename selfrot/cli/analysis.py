@@ -71,17 +71,29 @@ def _faithful(query: BaseFilter[Any]) -> bool:
 
 def same_filter(a: BaseFilter[Any], b: BaseFilter[Any]) -> bool:
     """Одинаковые фильтры: тогда второй хендлер никогда не получит апдейт."""
-    if (
-        not (_faithful(a) and _faithful(b))
-        or type(a) is not type(b)
-        or repr(a) != repr(b)
-    ):
+    if type(a) is not type(b):
+        return False
+
+    # &, |, ~ сравниваются по операндам, не по repr целиком: у двух составных
+    # фильтров может быть одинаковый repr («одна и та же форма»), но разные операнды
+    # внутри — например, Pagination.__init_subclass__ всегда называет класс кнопки
+    # _Page (view.py), и у CallbackPayloadFilter.filter() от двух разных Pagination-
+    # подклассов (разные prefix) совпадёт весь repr составного фильтра целиком, хотя
+    # сами классы кнопок разные (ниже это бы поймала проверка .payload — но только
+    # если сравнивать сами CallbackPayloadFilter, а не AndFilter/OrFilter над ними).
+    if isinstance(a, (AndFilter, OrFilter)) and isinstance(b, (AndFilter, OrFilter)):
+        return same_filter(a.left, b.left) and same_filter(a.right, b.right)
+    if isinstance(a, NotFilter) and isinstance(b, NotFilter):
+        return same_filter(a.inner, b.inner)
+
+    if not (_faithful(a) and _faithful(b)) or repr(a) != repr(b):
         return False
 
     if isinstance(a, AnyCommand) and isinstance(b, AnyCommand):
         return all(same_filter(x, y) for x, y in zip(a.commands, b.commands, strict=True))
 
-    # Имя класса в repr не различает одноимённые классы из разных модулей.
+    # Имя класса в repr не различает одноимённые классы из разных модулей (и из
+    # разных Pagination-подклассов — см. выше).
     for attr in ("payload", "args_model"):
         if getattr(a, attr, None) is not getattr(b, attr, None):
             return False

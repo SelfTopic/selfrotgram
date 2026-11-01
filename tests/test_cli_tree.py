@@ -14,6 +14,8 @@ from selfrot import (
     Bot,
     CommandArgs,
     MessageHandler,
+    Pagination,
+    ViewContent,
 )
 from selfrot.cli import main
 from selfrot.cli.analysis import chain, flat_repr, same_filter
@@ -31,7 +33,7 @@ from selfrot.filter import (
 )
 from selfrot.filter.base import OrFilter
 from selfrot.handlers import CallbackQueryHandler, ChatMemberHandler
-from selfrot.types import ChatMemberUpdated, TextMessage
+from selfrot.types import ChatMemberUpdated, DataCallbackQuery, TextMessage
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -307,6 +309,71 @@ class TestSameAnyCommand:
         assert repr(one) == repr(other)
         assert not same_filter(one, other)
         assert same_filter(one, one)
+
+
+class TestSamePaginationPrefix:
+    """Баг с продакшена: Pagination.__init_subclass__ (view.py) всегда называет класс
+    кнопки _Page — у двух разных Pagination-подклассов (разные prefix) совпадает repr
+    составного фильтра целиком (query & ЕщёЧто-то), хотя сами классы кнопок разные."""
+
+    def make_list(self, prefix: str) -> type[Pagination]:
+        class List(Pagination, prefix=prefix):
+            @classmethod
+            async def total(cls, ctx):
+                return 0
+
+            @classmethod
+            async def page_content(cls, ctx, page):
+                return ViewContent(body="x")
+
+        return List
+
+    def test_different_prefixes_combined_with_and_are_not_the_same(self):
+        Mutelist = self.make_list("mutelist")
+        Banlist = self.make_list("banlist")
+
+        class MutelistPressed(CallbackQueryHandler[BaseContext[DataCallbackQuery]]):
+            query = Mutelist.filter() & FromUser(1)
+
+            async def handle(self): ...
+
+        class BanlistPressed(CallbackQueryHandler[BaseContext[DataCallbackQuery]]):
+            query = Banlist.filter() & FromUser(1)
+
+            async def handle(self): ...
+
+        assert repr(MutelistPressed.query) == repr(BanlistPressed.query)  # сам баг
+
+        class Root(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+            handlers = (MutelistPressed, BanlistPressed)
+
+        text = lines(Root(token="1:T"))
+        assert "недостижим" not in "\n".join(text)
+
+    def test_the_same_prefix_twice_is_still_caught(self):
+        Mutelist = self.make_list("mutelist")
+
+        class First(CallbackQueryHandler[BaseContext[DataCallbackQuery]]):
+            query = Mutelist.filter() & FromUser(1)
+
+            async def handle(self): ...
+
+        class Second(CallbackQueryHandler[BaseContext[DataCallbackQuery]]):
+            query = Mutelist.filter() & FromUser(1)
+
+            async def handle(self): ...
+
+        class Root(BaseDispatcher[BaseContext]):
+            bot = Bot
+            context = BaseContext
+            handlers = (First, Second)
+
+        text = lines(Root(token="1:T"))
+        assert "недостижим: выше First тот же фильтр" in next(
+            t for t in text if "Second" in t
+        )
 
 
 class TestAnyCommandInTree:

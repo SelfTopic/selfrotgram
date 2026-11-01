@@ -201,6 +201,50 @@ class TestWarnings:
         # у пользовательского фильтра repr скрывает параметр: «одинаковые» IsUser() ложным срабатыванием
         assert not any("Two недостижим" in m for m in messages(run_check(bot_project)))
 
+    def test_different_pagination_prefixes_combined_with_and_are_not_the_same(
+        self, bot_project
+    ):
+        # Баг с продакшена: Pagination.__init_subclass__ всегда называет класс кнопки
+        # _Page (view.py) — у query = СвояПагинация.filter() & FromUser(...) двух разных
+        # Pagination-подклассов (разные prefix) совпадает repr составного фильтра
+        # целиком, хотя сами классы кнопок разные. selfrot check не должен считать их
+        # одним и тем же фильтром.
+        write(
+            bot_project,
+            "routers/lists.py",
+            "from selfrot import CallbackQueryHandler, Pagination, ViewContent\n"
+            "from selfrot.filter import FromUser\n"
+            "from selfrot.types import DataCallbackQuery\n\n"
+            "from ..context import AppContext\n\n\n"
+            "class Mutelist(Pagination, prefix='mutelist'):\n"
+            "    @classmethod\n    async def total(cls, ctx): return 0\n"
+            "    @classmethod\n    async def page_content(cls, ctx, page): return ViewContent(body='x')\n\n\n"
+            "class Banlist(Pagination, prefix='banlist'):\n"
+            "    @classmethod\n    async def total(cls, ctx): return 0\n"
+            "    @classmethod\n    async def page_content(cls, ctx, page): return ViewContent(body='x')\n\n\n"
+            "class MutelistPressed(CallbackQueryHandler[AppContext[DataCallbackQuery]]):\n"
+            "    query = Mutelist.filter() & FromUser(1)\n\n    async def handle(self): ...\n\n\n"
+            "class BanlistPressed(CallbackQueryHandler[AppContext[DataCallbackQuery]]):\n"
+            "    query = Banlist.filter() & FromUser(1)\n\n    async def handle(self): ...\n\n\n"
+            "from selfrot import BaseRouter\n\n\n"
+            "class ListsRouter(BaseRouter[AppContext]):\n"
+            "    handlers = (MutelistPressed, BanlistPressed)\n",
+        )
+        root = bot_project / "src/bot/routers/__init__.py"
+        text = root.read_text(encoding="utf-8")
+        root.write_text(
+            text.replace(
+                "# selfrot: imports",
+                "from .lists import ListsRouter\n# selfrot: imports",
+            ).replace(
+                "# selfrot: routers", "ListsRouter,\n        # selfrot: routers"
+            ),
+            encoding="utf-8",
+        )
+        assert not any(
+            "BanlistPressed недостижим" in m for m in messages(run_check(bot_project))
+        )
+
     def test_decorator_branches_are_not_mistaken_for_catch_all(self, bot_project):
         # Баг из 0.1.5/0.1.6: query хендлера с ветками всегда None, а анализ недостижимости
         # смотрел только на query — ветки с декораторами выглядели как «без фильтра, ловит
