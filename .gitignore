@@ -19,3 +19,5 @@ build/
 .issues/
 # куда examples/download_bot.py сохраняет файлы при ручном запуске
 downloads/
+# откуда examples/upload_bot.py берёт файлы для /album при ручном запуске
+uploads/

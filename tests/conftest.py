@@ -7,11 +7,12 @@ import inspect
 import json
 import sys
 from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pytest
-from aiohttp import web
+from aiohttp import BodyPartReader, web
 from pydantic import TypeAdapter
 
 from selfrot import Bot
@@ -28,6 +29,15 @@ def message_result(text: str = "x", message_id: int = 100, chat_id: int = 1) -> 
         "chat": {"id": chat_id, "type": "private"},
         "text": text,
     }
+
+
+@dataclass(frozen=True)
+class Upload:
+    """Файловая часть multipart-запроса, как её получил фейковый Telegram."""
+
+    filename: str
+    content_type: str
+    content: bytes
 
 
 ME = {"id": 123456, "is_bot": True, "first_name": "Bot", "username": "test_bot"}
@@ -83,7 +93,10 @@ class FakeTelegram:
 
     async def _handle(self, request: web.Request) -> web.StreamResponse:
         method = request.match_info["method"]
-        body = json.loads(await request.text() or "{}")
+        if request.content_type == "multipart/form-data":
+            body = await self._multipart_body(request)
+        else:
+            body = json.loads(await request.text() or "{}")
         self.calls.append((method, body))
 
         handler = self._handlers.get(method)
@@ -96,6 +109,29 @@ class FakeTelegram:
             return result
 
         return web.json_response({"ok": True, "result": result})
+
+    @staticmethod
+    async def _multipart_body(request: web.Request) -> dict[str, Any]:
+        # Файл — Upload, остальное — как в JSON-теле (вложенные объекты приходят
+        # строкой JSON, числа и true/false — тоже текстом).
+        body: dict[str, Any] = {}
+        reader = await request.multipart()
+        while (part := await reader.next()) is not None:
+            assert isinstance(part, BodyPartReader) and part.name
+            if part.filename is not None:
+                body[part.name] = Upload(
+                    part.filename,
+                    part.headers.get("Content-Type", ""),
+                    bytes(await part.read()),
+                )
+                continue
+            text = await part.text()
+            try:
+                body[part.name] = json.loads(text)
+            except ValueError:
+                body[part.name] = text
+
+        return body
 
     async def _handle_file(self, request: web.Request) -> web.StreamResponse:
         file_path = request.match_info["file_path"]

@@ -21,6 +21,7 @@ BOT_TOKEN=123456:ABC python -m examples.echo_bot  # или из переменн
 | [deferred_bot.py](deferred_bot.py) | отложенные действия: `defer` (таймеры), `after_handle` (долгая часть после закрытия хендлера) |
 | [data_parsed_bot.py](data_parsed_bot.py) | аргументы команды как данные: `CommandArgs`, `Rest`, необязательные аргументы, `CommandArgsError`, `AnyCommand` (несколько слов на одну команду) |
 | [reply_bot.py](reply_bot.py) | бот, который разбирает ответы на сообщения: 13 готовых условий (`ReplyUserMessage`, `HasReplyPhoto`, ...), `Reply[...]` для нескольких условий сразу, `\|` и `if`, подсказка после всех команд |
+| [upload_bot.py](upload_bot.py) | загрузка файлов: `InputFile` аргументом метода и внутри альбома (`InputMediaDocument(media=InputFile(...))`) — `attach://` подставляется сам, `file_id` рядом остаётся строкой |
 | [download_bot.py](download_bot.py) | скачивание файлов: `ctx.download(path)` (файл апдейта сам), `bot.download(file_id)` (по id, без апдейта) |
 | [pagination_bot.py](pagination_bot.py) | самообновляющееся сообщение: `Pagination` (листание страниц каталога) и `View` напрямую (счётчик) — хендлер не видит ни `edit_message_text`, ни `callback_query.answer()` |
 | [keyboards_bot.py](keyboards_bot.py) | `InlineKeyboard`, `CallbackPayload`, `.filter()`, `pressed_by` |

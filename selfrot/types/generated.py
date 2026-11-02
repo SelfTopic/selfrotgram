@@ -1625,7 +1625,7 @@ class Message(_Base, frozen=True):
 
     async def answer_media_group(
         self,
-        media: Union[List[InputMediaAudio], List[InputMediaDocument], List[InputMediaLivePhoto], List[InputMediaPhoto], List[InputMediaVideo]],
+        media: List[Union[InputMediaAudio, InputMediaDocument, InputMediaLivePhoto, InputMediaPhoto, InputMediaVideo]],
         *,
         business_connection_id: Optional[str] = None,
         message_thread_id: Optional[int] = None,
@@ -1657,7 +1657,7 @@ class Message(_Base, frozen=True):
 
     async def reply_media_group(
         self,
-        media: Union[List[InputMediaAudio], List[InputMediaDocument], List[InputMediaLivePhoto], List[InputMediaPhoto], List[InputMediaVideo]],
+        media: List[Union[InputMediaAudio, InputMediaDocument, InputMediaLivePhoto, InputMediaPhoto, InputMediaVideo]],
         *,
         business_connection_id: Optional[str] = None,
         message_thread_id: Optional[int] = None,
@@ -5321,7 +5321,7 @@ class ChatMemberUpdated(_Base, frozen=True):
 
     async def answer_media_group(
         self,
-        media: Union[List[InputMediaAudio], List[InputMediaDocument], List[InputMediaLivePhoto], List[InputMediaPhoto], List[InputMediaVideo]],
+        media: List[Union[InputMediaAudio, InputMediaDocument, InputMediaLivePhoto, InputMediaPhoto, InputMediaVideo]],
         *,
         business_connection_id: Optional[str] = None,
         message_thread_id: Optional[int] = None,
@@ -7026,9 +7026,9 @@ class InputMediaAnimation(_Base, frozen=True):
     """
     type: Literal["animation"] = Field(default='animation')
     """Type of the media, must be animation"""
-    media: str
+    media: Union[InputFile, str]
     """File to send. Pass a file_id to send a file that exists on the Telegram servers (recommended), pass an HTTP URL for Telegram to get a file from the Internet, or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
-    thumbnail: Optional[str] = Field(default=None)
+    thumbnail: Optional[Union[InputFile, str]] = Field(default=None)
     """Optional. Thumbnail of the file sent; can be ignored if thumbnail generation for the file is supported server-side. The thumbnail should be in JPEG format and less than 200 kB in size. A thumbnail's width and height should not exceed 320. Ignored if the file is not uploaded using multipart/form-data. Thumbnails can't be reused and can be only uploaded as a new file, so you can pass "attach://<file_attach_name>" if the thumbnail was uploaded using multipart/form-data under <file_attach_name>. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
     caption: Optional[str] = Field(default=None)
     """Optional. Caption of the animation to be sent, 0-1024 characters after entities parsing"""
@@ -7054,9 +7054,9 @@ class InputMediaAudio(_Base, frozen=True):
     """
     type: Literal["audio"] = Field(default='audio')
     """Type of the media, must be audio"""
-    media: str
+    media: Union[InputFile, str]
     """File to send. Pass a file_id to send a file that exists on the Telegram servers (recommended), pass an HTTP URL for Telegram to get a file from the Internet, or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
-    thumbnail: Optional[str] = Field(default=None)
+    thumbnail: Optional[Union[InputFile, str]] = Field(default=None)
     """Optional. Thumbnail of the file sent; can be ignored if thumbnail generation for the file is supported server-side. The thumbnail should be in JPEG format and less than 200 kB in size. A thumbnail's width and height should not exceed 320. Ignored if the file is not uploaded using multipart/form-data. Thumbnails can't be reused and can be only uploaded as a new file, so you can pass "attach://<file_attach_name>" if the thumbnail was uploaded using multipart/form-data under <file_attach_name>. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
     caption: Optional[str] = Field(default=None)
     """Optional. Caption of the audio to be sent, 0-1024 characters after entities parsing"""
@@ -7078,9 +7078,9 @@ class InputMediaDocument(_Base, frozen=True):
     """
     type: Literal["document"] = Field(default='document')
     """Type of the media, must be document"""
-    media: str
+    media: Union[InputFile, str]
     """File to send. Pass a file_id to send a file that exists on the Telegram servers (recommended), pass an HTTP URL for Telegram to get a file from the Internet, or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
-    thumbnail: Optional[str] = Field(default=None)
+    thumbnail: Optional[Union[InputFile, str]] = Field(default=None)
     """Optional. Thumbnail of the file sent; can be ignored if thumbnail generation for the file is supported server-side. The thumbnail should be in JPEG format and less than 200 kB in size. A thumbnail's width and height should not exceed 320. Ignored if the file is not uploaded using multipart/form-data. Thumbnails can't be reused and can be only uploaded as a new file, so you can pass "attach://<file_attach_name>" if the thumbnail was uploaded using multipart/form-data under <file_attach_name>. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
     caption: Optional[str] = Field(default=None)
     """Optional. Caption of the document to be sent, 0-1024 characters after entities parsing"""
@@ -7108,9 +7108,9 @@ class InputMediaLivePhoto(_Base, frozen=True):
     """
     type: Literal["live_photo"] = Field(default='live_photo')
     """Type of the media, must be live_photo"""
-    media: str
+    media: Union[InputFile, str]
     """Video of the live photo to send. Pass a file_id to send a file that exists on the Telegram servers (recommended) or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name. More information on Sending Files: https://core.telegram.org/bots/api#sending-files. Sending live photos by a URL is currently unsupported."""
-    photo: str
+    photo: Union[InputFile, str]
     """The static photo to send. Pass a file_id to send a file that exists on the Telegram servers (recommended) or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name. More information on Sending Files: https://core.telegram.org/bots/api#sending-files. Sending live photos by a URL is currently unsupported."""
     caption: Optional[str] = Field(default=None)
     """Optional. Caption of the live photo to be sent, 0-1024 characters after entities parsing"""
@@ -7144,7 +7144,7 @@ class InputMediaPhoto(_Base, frozen=True):
     """
     type: Literal["photo"] = Field(default='photo')
     """Type of the media, must be photo"""
-    media: str
+    media: Union[InputFile, str]
     """File to send. Pass a file_id to send a file that exists on the Telegram servers (recommended), pass an HTTP URL for Telegram to get a file from the Internet, or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
     caption: Optional[str] = Field(default=None)
     """Optional. Caption of the photo to be sent, 0-1024 characters after entities parsing"""
@@ -7164,7 +7164,7 @@ class InputMediaSticker(_Base, frozen=True):
     """
     type: Literal["sticker"] = Field(default='sticker')
     """Type of the media, must be sticker"""
-    media: str
+    media: Union[InputFile, str]
     """File to send. Pass a file_id to send a file that exists on the Telegram servers (recommended), pass an HTTP URL for Telegram to get a .WEBP sticker from the Internet, or pass "attach://<file_attach_name>" to upload a new .WEBP, .TGS, or .WEBM sticker using multipart/form-data under <file_attach_name> name. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
     emoji: Optional[str] = Field(default=None)
     """Optional. Emoji associated with the sticker; only for just uploaded stickers"""
@@ -7200,11 +7200,11 @@ class InputMediaVideo(_Base, frozen=True):
     """
     type: Literal["video"] = Field(default='video')
     """Type of the media, must be video"""
-    media: str
+    media: Union[InputFile, str]
     """File to send. Pass a file_id to send a file that exists on the Telegram servers (recommended), pass an HTTP URL for Telegram to get a file from the Internet, or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
-    thumbnail: Optional[str] = Field(default=None)
+    thumbnail: Optional[Union[InputFile, str]] = Field(default=None)
     """Optional. Thumbnail of the file sent; can be ignored if thumbnail generation for the file is supported server-side. The thumbnail should be in JPEG format and less than 200 kB in size. A thumbnail's width and height should not exceed 320. Ignored if the file is not uploaded using multipart/form-data. Thumbnails can't be reused and can be only uploaded as a new file, so you can pass "attach://<file_attach_name>" if the thumbnail was uploaded using multipart/form-data under <file_attach_name>. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
-    cover: Optional[str] = Field(default=None)
+    cover: Optional[Union[InputFile, str]] = Field(default=None)
     """Optional. Cover for the video in the message. Pass a file_id to send a file that exists on the Telegram servers (recommended), pass an HTTP URL for Telegram to get a file from the Internet, or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
     start_timestamp: Optional[int] = Field(default=None)
     """Optional. Start timestamp for the video in the message"""
@@ -7234,7 +7234,7 @@ class InputMediaVoiceNote(_Base, frozen=True):
     """
     type: Literal["voice_note"] = Field(default='voice_note')
     """Type of the media, must be voice_note"""
-    media: str
+    media: Union[InputFile, str]
     """File to send. Pass a file_id to send a file that exists on the Telegram servers (recommended), pass an HTTP URL for Telegram to get a file from the Internet, or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
     caption: Optional[str] = Field(default=None)
     """Optional. Caption of the voice message to be sent, 0-1024 characters after entities parsing"""
@@ -7252,9 +7252,9 @@ class InputPaidMediaLivePhoto(_Base, frozen=True):
     """
     type: Literal["live_photo"] = Field(default='live_photo')
     """Type of the media, must be live_photo"""
-    media: str
+    media: Union[InputFile, str]
     """Video of the live photo to send. Pass a file_id to send a file that exists on the Telegram servers (recommended) or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name. More information on Sending Files: https://core.telegram.org/bots/api#sending-files. Sending live photos by a URL is currently unsupported."""
-    photo: str
+    photo: Union[InputFile, str]
     """The static photo to send. Pass a file_id to send a file that exists on the Telegram servers (recommended) or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name. More information on Sending Files: https://core.telegram.org/bots/api#sending-files. Sending live photos by a URL is currently unsupported."""
 
 class InputPaidMediaPhoto(_Base, frozen=True):
@@ -7264,7 +7264,7 @@ class InputPaidMediaPhoto(_Base, frozen=True):
     """
     type: Literal["photo"] = Field(default='photo')
     """Type of the media, must be photo"""
-    media: str
+    media: Union[InputFile, str]
     """File to send. Pass a file_id to send a file that exists on the Telegram servers (recommended), pass an HTTP URL for Telegram to get a file from the Internet, or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
 
 class InputPaidMediaVideo(_Base, frozen=True):
@@ -7274,11 +7274,11 @@ class InputPaidMediaVideo(_Base, frozen=True):
     """
     type: Literal["video"] = Field(default='video')
     """Type of the media, must be video"""
-    media: str
+    media: Union[InputFile, str]
     """File to send. Pass a file_id to send a file that exists on the Telegram servers (recommended), pass an HTTP URL for Telegram to get a file from the Internet, or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
-    thumbnail: Optional[str] = Field(default=None)
+    thumbnail: Optional[Union[InputFile, str]] = Field(default=None)
     """Optional. Thumbnail of the file sent; can be ignored if thumbnail generation for the file is supported server-side. The thumbnail should be in JPEG format and less than 200 kB in size. A thumbnail's width and height should not exceed 320. Ignored if the file is not uploaded using multipart/form-data. Thumbnails can't be reused and can be only uploaded as a new file, so you can pass "attach://<file_attach_name>" if the thumbnail was uploaded using multipart/form-data under <file_attach_name>. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
-    cover: Optional[str] = Field(default=None)
+    cover: Optional[Union[InputFile, str]] = Field(default=None)
     """Optional. Cover for the video in the message. Pass a file_id to send a file that exists on the Telegram servers (recommended), pass an HTTP URL for Telegram to get a file from the Internet, or pass "attach://<file_attach_name>" to upload a new one using multipart/form-data under <file_attach_name> name. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
     start_timestamp: Optional[int] = Field(default=None)
     """Optional. Start timestamp for the video in the message"""
@@ -7298,7 +7298,7 @@ class InputProfilePhotoStatic(_Base, frozen=True):
     """
     type: Literal["static"] = Field(default='static')
     """Type of the profile photo, must be static"""
-    photo: str
+    photo: Union[InputFile, str]
     """The static profile photo. Profile photos can't be reused and can only be uploaded as a new file, so you can pass "attach://<file_attach_name>" if the photo was uploaded using multipart/form-data under <file_attach_name>. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
 
 class InputProfilePhotoAnimated(_Base, frozen=True):
@@ -7308,7 +7308,7 @@ class InputProfilePhotoAnimated(_Base, frozen=True):
     """
     type: Literal["animated"] = Field(default='animated')
     """Type of the profile photo, must be animated"""
-    animation: str
+    animation: Union[InputFile, str]
     """The animated profile photo. Profile photos can't be reused and can only be uploaded as a new file, so you can pass "attach://<file_attach_name>" if the photo was uploaded using multipart/form-data under <file_attach_name>. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
     main_frame_timestamp: Optional[float] = Field(default=None)
     """Optional. Timestamp in seconds of the frame that will be used as the static profile photo. Defaults to 0.0."""
@@ -7320,7 +7320,7 @@ class InputStoryContentPhoto(_Base, frozen=True):
     """
     type: Literal["photo"] = Field(default='photo')
     """Type of the content, must be photo"""
-    photo: str
+    photo: Union[InputFile, str]
     """The photo to post as a story. The photo must be of the size 1080x1920 and must not exceed 10 MB. The photo can't be reused and can only be uploaded as a new file, so you can pass "attach://<file_attach_name>" if the photo was uploaded using multipart/form-data under <file_attach_name>. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
 
 class InputStoryContentVideo(_Base, frozen=True):
@@ -7330,7 +7330,7 @@ class InputStoryContentVideo(_Base, frozen=True):
     """
     type: Literal["video"] = Field(default='video')
     """Type of the content, must be video"""
-    video: str
+    video: Union[InputFile, str]
     """The video to post as a story. The video must be of the size 720x1280, streamable, encoded with H.265 codec, with key frames added each second in the MPEG4 format, and must not exceed 30 MB. The video can't be reused and can only be uploaded as a new file, so you can pass "attach://<file_attach_name>" if the video was uploaded using multipart/form-data under <file_attach_name>. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
     duration: Optional[float] = Field(default=None)
     """Optional. Precise duration of the video in seconds; 0-60"""
@@ -7410,7 +7410,7 @@ class InputSticker(_Base, frozen=True):
     
     https://core.telegram.org/bots/api#inputsticker
     """
-    sticker: str
+    sticker: Union[InputFile, str]
     """The added sticker. Pass a file_id as a String to send a file that already exists on the Telegram servers, pass an HTTP URL as a String for Telegram to get a file from the Internet, or pass "attach://<file_attach_name>" to upload a new file using multipart/form-data under <file_attach_name> name. Animated and video stickers can't be uploaded via HTTP URL. More information on Sending Files: https://core.telegram.org/bots/api#sending-files"""
     format: str
     """Format of the added sticker, must be one of "static" for a .WEBP or .PNG image, "animated" for a .TGS animation, "video" for a .WEBM video"""

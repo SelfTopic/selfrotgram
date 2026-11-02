@@ -1589,7 +1589,7 @@ class ContextMethods(ContextHelpers[TEvent]):
 
     async def answer_media_group(
         self,
-        media: Union[List[InputMediaAudio], List[InputMediaDocument], List[InputMediaLivePhoto], List[InputMediaPhoto], List[InputMediaVideo]],
+        media: List[Union[InputMediaAudio, InputMediaDocument, InputMediaLivePhoto, InputMediaPhoto, InputMediaVideo]],
         *,
         business_connection_id: Optional[str] = None,
         message_thread_id: Optional[int] = None,
@@ -1632,7 +1632,7 @@ class ContextMethods(ContextHelpers[TEvent]):
 
     async def reply_media_group(
         self,
-        media: Union[List[InputMediaAudio], List[InputMediaDocument], List[InputMediaLivePhoto], List[InputMediaPhoto], List[InputMediaVideo]],
+        media: List[Union[InputMediaAudio, InputMediaDocument, InputMediaLivePhoto, InputMediaPhoto, InputMediaVideo]],
         *,
         business_connection_id: Optional[str] = None,
         message_thread_id: Optional[int] = None,

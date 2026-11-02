@@ -195,7 +195,9 @@ $ selfrot check
 - **Клавиатуры:** `InlineKeyboard` с проверкой лимитов Telegram; `View`/`Pagination` —
   самообновляющееся сообщение без `edit_message_text` и разбора данных кнопки в хендлере.
 - **Файлы:** `ctx.download(путь)` — файл текущего апдейта сам; `bot.download(file_id)` — байты
-  по id, без апдейта.
+  по id, без апдейта. Загрузка — `InputFile` и аргументом (`send_photo(photo=...)`), и полем
+  объекта (`InputMediaPhoto(media=InputFile(...))` в альбоме): `attach://` библиотека
+  подставляет сама, файлы с диска уходят частями, а не целиком через память.
 - **Упоминания без username:** `entity_text(text, entity)` — текст сущности по UTF-16
   offset/length Telegram, не по кодовым точкам Python; `mentions(message)`/`ctx.mentions()`
   — все кликабельные имена (text_mention) с пользователями внутри; `mention_html(user)` /
@@ -206,8 +208,7 @@ $ selfrot check
 
 ## Чего пока нет
 
-Локализации, сцен, готового хранилища FSM в Redis, загрузки файлов внутри альбомов, сборщика
-reply-клавиатур. Подробнее и честно:
+Локализации, сцен, готового хранилища FSM в Redis, сборщика reply-клавиатур. Подробнее и честно:
 [docs/from-aiogram.md](https://github.com/SelfTopic/selfrotgram/blob/main/docs/from-aiogram.md#чего-здесь-нет-а-в-aiogram-есть).
 
 ## Разработка

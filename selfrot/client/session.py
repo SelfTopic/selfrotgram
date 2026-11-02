@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, BinaryIO
 
 import aiohttp
 
@@ -9,13 +9,19 @@ from ..types import InputFile
 from .telegram import TELEGRAM_API, TELEGRAM_FILE_API
 
 
-async def _multipart(payload: dict[str, Any]) -> aiohttp.FormData:
+async def _multipart(
+    payload: dict[str, Any], opened: list[BinaryIO]
+) -> aiohttp.FormData:
+    """Файлы с диска — открытыми (aiohttp шлёт их частями); закрывает вызывающий по opened."""
     form = aiohttp.FormData()
     for key, value in payload.items():
         if isinstance(value, InputFile):
+            content = await value._open()
+            if not isinstance(content, bytes):
+                opened.append(content)
             form.add_field(
                 key,
-                await value.read(),
+                content,
                 filename=value.filename,
                 content_type=value.content_type,
             )
@@ -111,6 +117,7 @@ class AsyncSession:
         payload = method.to_payload()
         total = self._total_timeout(method, payload)
         timeout = aiohttp.ClientTimeout(total=total, sock_connect=self.connect_timeout)
+        opened: list[BinaryIO] = []
 
         try:
             # Файлы — multipart, всё остальное — JSON (вложенные объекты без
@@ -118,7 +125,7 @@ class AsyncSession:
             if any(isinstance(value, InputFile) for value in payload.values()):
                 request = session.post(
                     url,
-                    data=await _multipart(payload),
+                    data=await _multipart(payload, opened),
                     timeout=timeout,
                     proxy=self.proxy,
                 )
@@ -137,6 +144,10 @@ class AsyncSession:
         except aiohttp.ClientError as e:
             reason = self._redact(f"{type(e).__name__}: {e}", token)
             raise TelegramNetworkError(method.__api_method__, reason) from None
+        finally:
+            # aiohttp (с 3.12) сам их не закрывает; при обрыве — тем более.
+            for file in opened:
+                file.close()
 
         try:
             data = json.loads(body)

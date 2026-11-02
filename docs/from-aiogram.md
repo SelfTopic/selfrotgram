@@ -194,7 +194,6 @@ class DatabaseMiddleware(BaseMiddleware[AppContext]):
 - **Хелперы:** форматирование (`aiogram.utils.formatting`), deep-link, `ChatActionSender`,
   сборщик reply-клавиатур. Есть `html.escape` из стандартной библиотеки, `InputFile` для
   загрузки и `ctx.download`/`bot.download` для скачивания (то же имя, что в aiogram).
-- **Загрузка файлов внутри альбомов** (`attach://` для `send_media_group` с файлами).
 - Экосистема: готовые плагины, ответы на StackOverflow, обкатка на реальных нагрузках.
 
 ## Что есть здесь, а в aiogram нет

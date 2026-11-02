@@ -746,7 +746,7 @@ class SendMediaGroup(TelegramMethod[List[Message]]):
     """Unique identifier for the target message thread (topic) of a forum; for forum supergroups and private chats of bots with forum topic mode enabled only"""
     direct_messages_topic_id: Optional[int] = None
     """Identifier of the direct messages topic to which the messages will be sent; required if the messages are sent to a direct messages chat"""
-    media: Union[List[InputMediaAudio], List[InputMediaDocument], List[InputMediaLivePhoto], List[InputMediaPhoto], List[InputMediaVideo]]
+    media: List[Union[InputMediaAudio, InputMediaDocument, InputMediaLivePhoto, InputMediaPhoto, InputMediaVideo]]
     """A JSON-serialized Array describing messages to be sent, must include 2-10 items"""
     disable_notification: Optional[bool] = None
     """Sends messages silently. Users will receive a notification with no sound."""

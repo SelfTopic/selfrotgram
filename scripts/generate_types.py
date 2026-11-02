@@ -75,6 +75,14 @@ def py_type(types: list[str]) -> str:
             result = f"List[{result}]"
         return result
 
+    # «Array of InputMediaPhoto, Array of InputMediaVideo, ...» (sendMediaGroup.media) —
+    # один массив из любых таких элементов: альбом фото вперемешку с видео законен,
+    # а Union[List[...], List[...]] его не пропускал бы. Что с чем нельзя смешивать
+    # (документы — только с документами), проверяет Telegram.
+    arrays = [t[len("Array of ") :] for t in types if t.startswith("Array of ")]
+    if len(types) > 1 and len(arrays) == len(types):
+        return f"List[{py_type(arrays)}]"
+
     parts = [one(t) for t in types]
     return parts[0] if len(parts) == 1 else f"Union[{', '.join(parts)}]"
 
@@ -136,17 +144,27 @@ def find_discriminator(
     return name, values
 
 
+def mark_attachable(types: dict) -> list[str]:
+    """
+    Поля объектов, куда можно загрузить файл (InputMediaPhoto.media, InputSticker.sticker…).
+    В спеке у них тип String, а «attach://<имя>» — только в описании: сюда кладут
+    InputFile, ссылку и отдельную часть multipart подставляет methods/base.py.
+    """
+    marked = []
+    for name, t in types.items():
+        for field in t.get("fields", []):
+            if field["types"] == ["String"] and "attach://" in field["description"]:
+                field["types"] = ["InputFile", "String"]
+                marked.append(f"{name}.{field['name']}")
+    return marked
+
+
 def check_names(types: dict) -> None:
     from pydantic import BaseModel
 
     base_attrs = set(dir(BaseModel))
     for name, t in types.items():
         assert name not in RESERVED, f"имя типа {name} конфликтует с импортами"
-        for field in t.get("fields", []):
-            assert not any("InputFile" in x for x in field["types"]), (
-                f"{name}.{field['name']}: InputFile в поле типа — pydantic-модели "
-                "не умеют его хранить, нужен отдельный разбор"
-            )
         for field in t.get("fields", []):
             attr, _ = attr_name(field["name"])
             assert attr not in base_attrs, (
@@ -1121,6 +1139,7 @@ def generate_context_methods(spec: dict) -> str:
 
 def main() -> None:
     spec = load_spec()
+    attachable = mark_attachable(spec["types"])
     generated, narrowed = generate(spec)
     (OUT / "generated.py").write_text(generated, encoding="utf-8")
     (OUT / "narrowed.py").write_text(narrowed, encoding="utf-8")
@@ -1146,7 +1165,8 @@ def main() -> None:
     print(
         f"{spec['version']}: типов {len(spec['types'])}, "
         f"generated.py {len(generated.splitlines())} строк, "
-        f"narrowed.py {len(narrowed.splitlines())} строк"
+        f"narrowed.py {len(narrowed.splitlines())} строк, "
+        f"полей под attach:// {len(attachable)}"
     )
 
 

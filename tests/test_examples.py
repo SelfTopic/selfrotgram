@@ -18,6 +18,7 @@ EXAMPLES = [  # у каждого есть хендлеры
     ("examples.data_parsed_bot", "Dispatcher", None),
     ("examples.reply_bot", "Dispatcher", None),
     ("examples.download_bot", "Dispatcher", None),
+    ("examples.upload_bot", "Dispatcher", None),
     ("examples.pagination_bot", "Dispatcher", None),
     ("examples.deferred_bot", "Dispatcher", None),
     ("examples.fun_bot", "Dispatcher", None),
@@ -314,6 +315,43 @@ async def test_download_bot_saves_and_resaves(telegram, monkeypatch, tmp_path):
     await feed(dp, message_update("/resave чужой-id"))
     assert telegram.sent[-1]["text"] == "Такой file_id скачать не получилось."
 
+    await dp.api.close_session()
+
+
+async def test_upload_bot_note_and_album(telegram, monkeypatch, tmp_path):
+    from examples.upload_bot import Dispatcher
+
+    from .conftest import Upload, message_result, message_update, reply_update
+
+    monkeypatch.chdir(tmp_path)  # uploads/ ищется рядом с процессом
+    telegram.on("sendDocument", message_result())
+    telegram.on("sendMediaGroup", [message_result()])
+    dp = Dispatcher(token="123456:TEST-token")
+
+    await feed(dp, message_update("/note купить хлеб"))
+    method, body = telegram.last()
+    assert method == "sendDocument"
+    assert body["document"].filename == "note.txt"
+    assert body["document"].content.decode().endswith("\n\nкупить хлеб\n")
+
+    await feed(dp, message_update("/album"))  # папки нет — подсказка, не пустой альбом
+    assert telegram.sent[-1]["text"].startswith("Положите в uploads/")
+
+    (tmp_path / "uploads").mkdir()
+    (tmp_path / "uploads" / "a.txt").write_bytes(b"A")
+    (tmp_path / "uploads" / "b.csv").write_bytes(b"B")
+    document = {"file_id": "DOC", "file_unique_id": "U"}
+    await feed(dp, reply_update("/album", {"document": document}))
+
+    method, body = telegram.last()
+    assert method == "sendMediaGroup"
+    assert body["media"] == [
+        {"type": "document", "media": "DOC", "caption": "Файлов: 3"},
+        {"type": "document", "media": "attach://file0"},
+        {"type": "document", "media": "attach://file1"},
+    ]
+    assert body["file0"] == Upload("a.txt", "text/plain", b"A")
+    assert body["file1"] == Upload("b.csv", "text/csv", b"B")
     await dp.api.close_session()
 
 
